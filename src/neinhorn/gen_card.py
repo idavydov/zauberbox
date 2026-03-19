@@ -1,9 +1,10 @@
 import qrcode
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import argparse
 import os
 import sys
 import glob
+import random
 from importlib import resources
 
 def draw_text_with_outline(draw, position, text, font, text_color="white", outline_color="black"):
@@ -59,10 +60,28 @@ def generate_card(cover_path, uri, output_file, tracks_dir=None, qr_width_ratio=
     # Create the base card
     card = Image.new("RGB", (WIDTH_PX, HEIGHT_PX), "white")
     
-    # --- 2. QR Background Generation ---
-    # Sample the right-most column of the cover to create a seamless transition
-    edge_strip = cover_final.crop((target_w - 1, 0, target_w, target_h))
-    qr_bg = edge_strip.resize((QR_SECTION_WIDTH, target_h), Image.Resampling.NEAREST)
+    # --- 2. QR Background Generation: Slowly changing Gaussian Noise ---
+    # Get 8 most frequent colors from the cover
+    try:
+        quantized = cover_final.quantize(colors=8)
+        palette = quantized.getpalette()
+        # Each color is 3 values (R, G, B)
+        colors = [tuple(palette[i:i+3]) for i in range(0, 24, 3)]
+    except Exception:
+        # Fallback to a simple palette if quantization fails
+        colors = [(255, 255, 255), (200, 200, 200), (150, 150, 150)]
+
+    # Create a small noise source (e.g., 5x5)
+    noise_w, noise_h = 5, 5
+    noise_src = Image.new("RGB", (noise_w, noise_h))
+    pixels = noise_src.load()
+    for y in range(noise_h):
+        for x in range(noise_w):
+            pixels[x, y] = random.choice(colors)
+
+    # Upscale and blur to create "slowly changing" effect
+    qr_bg = noise_src.resize((QR_SECTION_WIDTH, HEIGHT_PX), Image.Resampling.BILINEAR)
+    qr_bg = qr_bg.filter(ImageFilter.GaussianBlur(radius=QR_SECTION_WIDTH / 4))
     
     card.paste(cover_final, (0, 0))
     card.paste(qr_bg, (COVER_WIDTH, 0))
