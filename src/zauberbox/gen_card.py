@@ -127,7 +127,7 @@ def generate_card(cover_path, uri, output_file, tracks_dir=None, qr_width_ratio=
                 # --- Try loading bundled font first ---
                 font = None
                 try:
-                    font_path = resources.files('neinhorn.fonts').joinpath('NotoSans-Medium.ttf')
+                    font_path = resources.files('zauberbox.fonts').joinpath('NotoSans-Medium.ttf')
                     with resources.as_file(font_path) as path:
                         if path.exists():
                             font = ImageFont.truetype(str(path), font_size)
@@ -138,7 +138,7 @@ def generate_card(cover_path, uri, output_file, tracks_dir=None, qr_width_ratio=
                 if not font:
                     font_paths = [
                         "/usr/share/fonts/truetype/noto/NotoSans-Medium.ttf",
-                        "/home/idavydov/Music/Neinhorn/fonts/fonts/ttf/JetBrainsMono-Medium.ttf",
+                        "/home/idavydov/Music/Zauberbox/fonts/fonts/ttf/JetBrainsMono-Medium.ttf",
                         "/usr/share/fonts/opentype/inter/Inter-Bold.otf",
                         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                         "C:\\Windows\\Fonts\\arial.ttf",

@@ -3,7 +3,7 @@ import os
 import sys
 import glob
 from PIL import Image, ImageDraw
-from neinhorn.gen_card import generate_card
+from zauberbox.gen_card import generate_card
 
 def combine_chunk(cards, output_file):
     # Dimensions based on 300 DPI

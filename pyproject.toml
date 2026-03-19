@@ -1,5 +1,5 @@
 [project]
-name = "neinhorn"
+name = "zauberbox"
 version = "0.1.0"
 description = "Tools for generating mixtape cards and managing MP3s"
 readme = "README.md"
@@ -10,9 +10,9 @@ dependencies = [
 ]
 
 [project.scripts]
-gen-card = "neinhorn.gen_card:main"
-number-mp3s = "neinhorn.number:main"
-combine-cards = "neinhorn.combine:main"
+gen-card = "zauberbox.gen_card:main"
+number-mp3s = "zauberbox.number:main"
+combine-cards = "zauberbox.combine:main"
 
 [build-system]
 requires = ["hatchling"]
