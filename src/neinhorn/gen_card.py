@@ -171,8 +171,7 @@ def generate_card(cover_path, uri, output_file, tracks_dir=None, qr_width_ratio=
             except Exception as e:
                 print(f"Warning: Could not process tracks: {e}")
     
-    card.save(output_file, "JPEG", quality=95)
-    print(f"Generated {WIDTH_PX}x{HEIGHT_PX}px card: {output_file}")
+    return card
 
 def main():
     parser = argparse.ArgumentParser(description="Generate a Mixtape Card with Track Overlay.")
@@ -203,12 +202,14 @@ def main():
         else:
             parser.error(f"No --cover provided and couldn't find a unique image file (found {len(images)}) in current directory. (Ignored {args.out})")
 
-    uri = args.uri or f"file://{os.path.basename(os.getcwd())}/"
+    uri = args.uri or f"file://{os.path.basename(os.path.abspath(os.getcwd()))}"
     if not args.uri:
         print(f"No --uri provided, using default URI: {uri}")
 
     tracks_dir = None if args.no_tracks else args.tracks
-    generate_card(cover, uri, args.out, tracks_dir=tracks_dir, qr_width_ratio=args.qwidth, font_size=args.tsize)
+    card = generate_card(cover, uri, args.out, tracks_dir=tracks_dir, qr_width_ratio=args.qwidth, font_size=args.tsize)
+    card.save(args.out, "JPEG", quality=95)
+    print(f"Saved card to {args.out}")
 
 if __name__ == "__main__":
     main()

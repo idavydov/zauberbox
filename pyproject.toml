@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 gen-card = "neinhorn.gen_card:main"
 number-mp3s = "neinhorn.number:main"
+combine-cards = "neinhorn.combine:main"
 
 [build-system]
 requires = ["hatchling"]
