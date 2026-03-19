@@ -203,7 +203,7 @@ def main():
         else:
             parser.error(f"No --cover provided and couldn't find a unique image file (found {len(images)}) in current directory. (Ignored {args.out})")
 
-    uri = args.uri or f"file://{os.path.basename(os.getcwd())/}"
+    uri = args.uri or f"file://{os.path.basename(os.getcwd())}/"
     if not args.uri:
         print(f"No --uri provided, using default URI: {uri}")
 
