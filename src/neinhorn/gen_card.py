@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 import glob
+from importlib import resources
 
 def draw_text_with_outline(draw, position, text, font, text_color="white", outline_color="black"):
     """Draws text with a 1px outline for maximum visibility on images."""
@@ -104,20 +105,31 @@ def generate_card(cover_path, uri, output_file, tracks_dir=None, qr_width_ratio=
                 files = [f[:-4] for f in os.listdir(search_dir) if f.lower().endswith('.mp3')]
                 files.sort()
                 
-                font_paths = [
-                    "/usr/share/fonts/truetype/noto/NotoSans-Medium.ttf",
-                    "/home/idavydov/Music/Neinhorn/fonts/fonts/ttf/JetBrainsMono-Medium.ttf",
-                    "/usr/share/fonts/opentype/inter/Inter-Bold.otf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "C:\\Windows\\Fonts\\arial.ttf",
-                    "/Library/Fonts/Arial.ttf"
-                ]
+                # --- Try loading bundled font first ---
                 font = None
-                for path in font_paths:
-                    if os.path.exists(path):
-                        font = ImageFont.truetype(path, font_size)
-                        print("Font:", path)
-                        break
+                try:
+                    font_path = resources.files('neinhorn.fonts').joinpath('NotoSans-Medium.ttf')
+                    with resources.as_file(font_path) as path:
+                        if path.exists():
+                            font = ImageFont.truetype(str(path), font_size)
+                            print(f"Using bundled font: {path}")
+                except Exception as e:
+                    print(f"Warning: Could not load bundled font: {e}")
+
+                if not font:
+                    font_paths = [
+                        "/usr/share/fonts/truetype/noto/NotoSans-Medium.ttf",
+                        "/home/idavydov/Music/Neinhorn/fonts/fonts/ttf/JetBrainsMono-Medium.ttf",
+                        "/usr/share/fonts/opentype/inter/Inter-Bold.otf",
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                        "C:\\Windows\\Fonts\\arial.ttf",
+                        "/Library/Fonts/Arial.ttf"
+                    ]
+                    for path in font_paths:
+                        if os.path.exists(path):
+                            font = ImageFont.truetype(path, font_size)
+                            print("Font:", path)
+                            break
                 if not font:
                     font = ImageFont.load_default()
                 
