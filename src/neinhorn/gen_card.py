@@ -193,11 +193,15 @@ def main():
         images = []
         for ext in extensions:
             images.extend(glob.glob(ext))
+        
+        # Ignore the output file itself if it matches the glob (e.g., card.jpg)
+        images = [img for img in images if os.path.basename(img).lower() != args.out.lower()]
+        
         if len(images) == 1:
             cover = images[0]
             print(f"No --cover provided, using: {cover}")
         else:
-            parser.error("No --cover provided and couldn't find a unique image file (png, jpg, jpeg, webp) in current directory.")
+            parser.error(f"No --cover provided and couldn't find a unique image file (found {len(images)}) in current directory. (Ignored {args.out})")
 
     uri = args.uri or os.path.basename(os.getcwd())
     if not args.uri:
