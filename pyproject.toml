@@ -7,12 +7,14 @@ requires-python = ">=3.12"
 dependencies = [
     "qrcode",
     "Pillow",
+    "flask",
 ]
 
 [project.scripts]
 gen-card = "zauberbox.gen_card:main"
 number-mp3s = "zauberbox.number:main"
 combine-cards = "zauberbox.combine:main"
+mock-server = "zauberbox.web.mock_server:main"
 
 [build-system]
 requires = ["hatchling"]
