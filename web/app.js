@@ -30,17 +30,22 @@ const ICONS = {
     download: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`
 };
 
-function showModal({ title, message, input = false, value = '' }) {
+function showModal({ title, message, input = false, value = '', confirmText = 'Confirm', cancelText = 'Cancel', showCancel = true }) {
     return new Promise((resolve) => {
         const modal = document.getElementById('modal');
         const titleEl = document.getElementById('modal-title');
         const messageEl = document.getElementById('modal-message');
         const inputEl = document.getElementById('modal-input');
         const confirmBtn = document.getElementById('modal-confirm');
-        const cancelBtns = modal.querySelectorAll('.secondary, [aria-label="Close"]');
+        const cancelBtn = document.getElementById('modal-cancel');
+        const closeBtn = modal.querySelector('[aria-label="Close"]');
 
         titleEl.textContent = title;
         messageEl.textContent = message;
+        confirmBtn.textContent = confirmText;
+        cancelBtn.textContent = cancelText;
+        cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
+
         if (input) {
             inputEl.style.display = 'block';
             inputEl.value = value;
@@ -50,8 +55,9 @@ function showModal({ title, message, input = false, value = '' }) {
 
         const cleanup = () => {
             confirmBtn.onclick = null;
+            cancelBtn.onclick = null;
+            closeBtn.onclick = null;
             inputEl.onkeydown = null;
-            cancelBtns.forEach(btn => btn.onclick = null);
             modal.close();
         };
 
@@ -67,7 +73,8 @@ function showModal({ title, message, input = false, value = '' }) {
         };
 
         confirmBtn.onclick = handleConfirm;
-        cancelBtns.forEach(btn => btn.onclick = handleCancel);
+        cancelBtn.onclick = handleCancel;
+        closeBtn.onclick = handleCancel;
         inputEl.onkeydown = (e) => { if (e.key === 'Enter') handleConfirm(); };
         
         modal.showModal();
@@ -137,7 +144,8 @@ async function handleMkdir() {
         title: 'New Folder',
         message: 'Enter folder name:',
         input: true,
-        value: nextNum
+        value: nextNum,
+        confirmText: 'Create'
     });
     if (!name) return;
 
@@ -153,7 +161,8 @@ async function handleRmdir(e, name) {
     e.stopPropagation();
     const confirmed = await showModal({
         title: 'Delete Directory',
-        message: `Delete directory "${name}" and all its contents permanently?`
+        message: `Delete directory "${name}" and all its contents permanently?`,
+        confirmText: 'Delete'
     });
     if (!confirmed) return;
     await fetchAPI('/rmdir', {
@@ -169,7 +178,8 @@ async function handleRename(oldName) {
         title: 'Rename File',
         message: `Rename "${oldName}" to:`,
         input: true,
-        value: oldName
+        value: oldName,
+        confirmText: 'Rename'
     });
     if (!newName || newName === oldName) return;
     await fetchAPI('/rename', {
@@ -183,7 +193,8 @@ async function handleRename(oldName) {
 async function handleDelete(fileName) {
     const confirmed = await showModal({
         title: 'Delete File',
-        message: `Delete "${fileName}" permanently?`
+        message: `Delete "${fileName}" permanently?`,
+        confirmText: 'Delete'
     });
     if (!confirmed) return;
     await fetchAPI('/delete', {
@@ -202,7 +213,6 @@ async function handleUpload(files) {
         const type = file.type.startsWith('image/') ? 'cover' : 'mp3';
         
         if (type === 'cover') {
-            // Convert to JPEG client-side
             file = await convertToJpeg(file);
         }
 
@@ -213,9 +223,161 @@ async function handleUpload(files) {
         await fetchAPI('/upload', { method: 'POST', body: formData });
     }
     
-    // Refresh directory list and current view
     state.directories = await fetchAPI('/list');
     enterDirectory(state.currentPath);
+}
+
+async function handleGenerateCard() {
+    const coverUrl = state.files.find(f => f.name.toLowerCase() === 'cover.jpg') 
+        ? `${API_BASE}/file?path=${state.currentPath}&name=cover.jpg` 
+        : null;
+
+    if (!coverUrl) {
+        await showModal({ 
+            title: 'Error', 
+            message: 'Please upload a cover image first.',
+            confirmText: 'OK',
+            showCancel: false 
+        });
+        return;
+    }
+
+    state.loading = true; render();
+
+    try {
+        const DPI = 300;
+        const MM_TO_INCH = 25.4;
+        const WIDTH_PX = Math.round((76 / MM_TO_INCH) * DPI);
+        const HEIGHT_PX = Math.round((34 / MM_TO_INCH) * DPI);
+        const QR_WIDTH_RATIO = 0.33;
+        const QR_SECTION_WIDTH = Math.round(WIDTH_PX * QR_WIDTH_RATIO);
+        const COVER_WIDTH = WIDTH_PX - QR_SECTION_WIDTH;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = WIDTH_PX;
+        canvas.height = HEIGHT_PX;
+        const ctx = canvas.getContext('2d');
+
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error("Failed to load cover image."));
+            img.src = coverUrl;
+        });
+
+        const imgAspect = img.width / img.height;
+        const targetAspect = COVER_WIDTH / HEIGHT_PX;
+        let sx, sy, sWidth, sHeight;
+
+        if (imgAspect > targetAspect) {
+            sHeight = img.height;
+            sWidth = img.height * targetAspect;
+            sx = (img.width - sWidth) / 2;
+            sy = 0;
+        } else {
+            sWidth = img.width;
+            sHeight = img.width / targetAspect;
+            sx = 0;
+            sy = (img.height - sHeight) / 2;
+        }
+        ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, COVER_WIDTH, HEIGHT_PX);
+
+        const colors = getDominantColors(ctx, COVER_WIDTH, HEIGHT_PX);
+        const noiseCanvas = document.createElement('canvas');
+        noiseCanvas.width = 5;
+        noiseCanvas.height = 5;
+        const noiseCtx = noiseCanvas.getContext('2d');
+        for (let y = 0; y < 5; y++) {
+            for (let x = 0; x < 5; x++) {
+                noiseCtx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                noiseCtx.fillRect(x, y, 1, 1);
+            }
+        }
+
+        ctx.save();
+        if (ctx.filter !== undefined) {
+            ctx.filter = `blur(${QR_SECTION_WIDTH / 4}px)`;
+        }
+        ctx.drawImage(noiseCanvas, COVER_WIDTH - 10, -10, QR_SECTION_WIDTH + 20, HEIGHT_PX + 20);
+        ctx.restore();
+
+        const uri = `file://${state.currentPath}`;
+        const qrSize = Math.min(QR_SECTION_WIDTH, HEIGHT_PX) * 0.8;
+        const qrContainer = document.createElement('div');
+        new QRCode(qrContainer, {
+            text: uri,
+            width: qrSize,
+            height: qrSize,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.H
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const qrCanvas = qrContainer.querySelector('canvas');
+        const qrX = COVER_WIDTH + (QR_SECTION_WIDTH - qrSize) / 2;
+        const qrY = (HEIGHT_PX - qrSize) / 2;
+        ctx.drawImage(qrCanvas, qrX, qrY);
+
+        const mp3s = state.files
+            .filter(f => f.name.toLowerCase().endsWith('.mp3'))
+            .map(f => f.name.replace(/\.mp3$/i, ''))
+            .sort();
+
+        if (mp3s.length > 0) {
+            const fontSize = 24;
+            ctx.font = `bold ${fontSize}px sans-serif`;
+            ctx.textBaseline = 'bottom';
+            const margin = 15;
+            const lineHeight = fontSize + 4;
+            const maxTracks = Math.floor((HEIGHT_PX - (margin * 2)) / lineHeight);
+            const visibleTracks = mp3s.slice(0, maxTracks);
+            const totalTextHeight = visibleTracks.length * lineHeight;
+            let currentY = HEIGHT_PX - margin - totalTextHeight + fontSize;
+
+            visibleTracks.forEach(track => {
+                drawTextWithOutline(ctx, track, margin, currentY);
+                currentY += lineHeight;
+            });
+        }
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        const link = document.createElement('a');
+        link.download = `card_${state.currentPath}.jpg`;
+        link.href = dataUrl;
+        link.click();
+
+    } catch (err) {
+        await showModal({ 
+            title: 'Error', 
+            message: 'Failed to generate card.',
+            confirmText: 'OK',
+            showCancel: false 
+        });
+    } finally {
+        state.loading = false; render();
+    }
+}
+
+function getDominantColors(ctx, width, height) {
+    const data = ctx.getImageData(0, 0, width, height).data;
+    const sampleCount = 100;
+    const colors = [];
+    for (let i = 0; i < sampleCount; i++) {
+        const idx = Math.floor(Math.random() * (data.length / 4)) * 4;
+        colors.push(`rgb(${data[idx]}, ${data[idx+1]}, ${data[idx+2]})`);
+    }
+    return colors;
+}
+
+function drawTextWithOutline(ctx, text, x, y) {
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = 'white';
+    ctx.fillText(text, x, y);
 }
 
 async function convertToJpeg(file) {
@@ -283,7 +445,6 @@ function render() {
                 </div>
             `;
         });
-        // Add Folder Card
         html += `
             <div class="dir-card add-card" onclick="handleMkdir()">
                 ${ICONS.plus}
@@ -293,22 +454,20 @@ function render() {
         html += `</div>`;
         app.innerHTML = html;
     } else {
-        const currentDir = state.directories.find(d => d.name === state.currentPath);
-        
         navLeft.innerHTML = `
             <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="loadDashboard()">${ICONS.back}</button></li>
             <li><strong>${state.currentPath}</strong></li>
         `;
-        navRight.innerHTML = ``;
+        navRight.innerHTML = `
+            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate Card Image">${ICONS.image} Card</button></li>
+        `;
         
         let html = `
             <div class="dir-container">
-                <!-- Left: Combined File List -->
                 <section>
                     <div class="header-row">
                         <h2>Contents</h2>
                     </div>
-                    
                     <div class="file-list">
         `;
 
@@ -358,7 +517,6 @@ function render() {
                 </section>
         `;
 
-        // Right: Album Cover Preview
         const coverFile = state.files.find(f => f.name.toLowerCase() === 'cover.jpg');
         const coverUrl = coverFile ? `${API_BASE}/file?path=${state.currentPath}&name=${coverFile.name}` : null;
         

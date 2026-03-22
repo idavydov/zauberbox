@@ -14,6 +14,7 @@ def build():
     pico_path = os.path.join(web_src_dir, "pico.min.css")
     style_path = os.path.join(web_src_dir, "style.css")
     app_path = os.path.join(web_src_dir, "app.js")
+    qr_path = os.path.join(web_src_dir, "qrcode.min.js")
     
     output_path = os.path.join(dist_dir, "index.html")
     output_gz_path = output_path + ".gz"
@@ -32,6 +33,11 @@ def build():
     with open(style_path, "r") as f:
         css = f.read()
     content = content.replace('<link rel="stylesheet" href="style.css">', f'<style>{css}</style>')
+
+    # Inline QR library
+    with open(qr_path, "r") as f:
+        qr_js = f.read()
+    content = content.replace('<script src="qrcode.min.js"></script>', f'<script>{qr_js}</script>')
 
     # Inline JS
     with open(app_path, "r") as f:

@@ -20,7 +20,7 @@ def index():
 
 @app.route('/<path:filename>')
 def serve_static(filename):
-    if filename in ['style.css', 'app.js', 'pico.min.css']:
+    if filename in ['style.css', 'app.js', 'pico.min.css', 'qrcode.min.js']:
         return send_from_directory(WEB_DIR, filename)
     return "", 404
 
