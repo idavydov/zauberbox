@@ -61,8 +61,27 @@
             text-overflow: ellipsis;
             display: block;
         }
+        .dir-card { position: relative; }
+        .dir-card .delete-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+            background: var(--pico-card-background-color);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--pico-muted-border-color);
+            color: var(--pico-error-background);
+        }
+        .dir-card:hover .delete-btn { opacity: 1; }
+        .dir-card .delete-btn:hover { background: var(--pico-error-background); color: white; border-color: var(--pico-error-background); }
 
-        /* New Directory Card */
+        /* New Folder Card */
         .add-card {
             border: 2px dashed var(--pico-muted-border-color);
             background: transparent;
@@ -109,10 +128,20 @@
             transition: background 0.2s;
         }
         .file-item:last-child { border-bottom: none; }
-        .file-item:hover { background: var(--pico-secondary-focus); }
+        .file-item:hover:not(.separator) { background: var(--pico-secondary-focus); }
         
         .file-item .file-icon { margin-right: 12px; color: var(--pico-primary); display: flex; }
         .file-item .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .file-item.separator {
+            background: var(--pico-secondary-focus);
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.05rem;
+            color: var(--pico-muted-color);
+            padding: 0.4rem 1rem;
+        }
 
         /* Cover Preview Styles */
         .cover-preview-card {
@@ -132,10 +161,8 @@
             display: block;
             background: var(--pico-secondary-focus);
         }
-        .cover-edit-overlay {
+        .cover-edit-overlay, .cover-delete-overlay {
             position: absolute;
-            top: 1.5rem;
-            right: 1.5rem;
             background: var(--pico-card-background-color);
             border-radius: 50%;
             width: 32px;
@@ -145,11 +172,20 @@
             justify-content: center;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             cursor: pointer;
-            color: var(--pico-primary);
             transition: transform 0.2s;
             border: 1px solid var(--pico-muted-border-color);
         }
-        .cover-edit-overlay:hover { transform: scale(1.1); }
+        .cover-edit-overlay {
+            top: 1.5rem;
+            right: 1.5rem;
+            color: var(--pico-primary);
+        }
+        .cover-delete-overlay {
+            top: 1.5rem;
+            left: 1.5rem;
+            color: var(--pico-error-background);
+        }
+        .cover-edit-overlay:hover, .cover-delete-overlay:hover { transform: scale(1.1); }
 
         /* Inline Upload Item */
         .upload-item {
@@ -157,43 +193,41 @@
             font-weight: bold;
             cursor: pointer;
             background: var(--pico-primary-focus);
+            position: relative;
+            padding: 2rem 1rem;
+            min-height: 80px;
+            justify-content: center;
         }
         .upload-item:hover { background: var(--pico-primary-hover); color: white; }
         .upload-item input { display: none; }
 
         /* Drag & Drop Overlay */
-        #drop-zone {
-            position: relative;
-            min-height: 200px;
-        }
-        #drop-zone.drag-over::after {
-            content: 'Drop files to upload';
+        .upload-item.drag-over::after {
+            content: 'Drop to upload';
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(var(--pico-primary-rgb), 0.1);
+            background: rgba(var(--pico-primary-rgb), 0.2);
             border: 2px dashed var(--pico-primary);
-            border-radius: var(--pico-border-radius);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: var(--pico-primary);
-            z-index: 10;
             pointer-events: none;
+            z-index: 10;
         }
 
         /* Utilities */
         .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
         .header-row h2 { margin: 0; flex: 1; font-size: 1.5rem; }
-        .edit-icon {
-            margin-left: 8px;
+        .action-icon {
+            margin-left: 12px;
             cursor: pointer;
             opacity: 0.5;
-            transition: opacity 0.2s;
+            transition: opacity 0.2s, color 0.2s;
+            display: inline-flex;
         }
-        .edit-icon:hover { opacity: 1; color: var(--pico-primary); }
-        .edit-icon svg { width: 16px; height: 16px; vertical-align: middle; }
+        .action-icon:hover { opacity: 1; color: var(--pico-primary); }
+        .action-icon.delete:hover { color: var(--pico-error-background); }
+        .action-icon svg { width: 16px; height: 16px; vertical-align: middle; }
         
         #app { flex: 1; }
     </style>
@@ -219,6 +253,21 @@
         <small>ESP32 Zauberbox &bull; <a href="#" onclick="loadDashboard(); return false;">Home</a></small>
     </footer>
 
+    <dialog id="modal">
+        <article>
+            <header>
+                <button aria-label="Close" rel="prev"></button>
+                <p><strong id="modal-title">Confirm</strong></p>
+            </header>
+            <p id="modal-message">Are you sure?</p>
+            <input type="text" id="modal-input" style="display:none;">
+            <footer>
+                <button class="secondary">Cancel</button>
+                <button id="modal-confirm">Confirm</button>
+            </footer>
+        </article>
+    </dialog>
+
     <script>
         const API_BASE = '/api';
         let state = {
@@ -237,11 +286,61 @@
 
         const ICONS = {
             music: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
-            edit: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
+            edit: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
+            trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`,
             plus: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
             back: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`,
-            image: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`
+            image: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
+            file: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`,
+            download: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`
         };
+
+        function showModal({ title, message, input = false, value = '' }) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('modal');
+                const titleEl = document.getElementById('modal-title');
+                const messageEl = document.getElementById('modal-message');
+                const inputEl = document.getElementById('modal-input');
+                const confirmBtn = document.getElementById('modal-confirm');
+                const cancelBtns = modal.querySelectorAll('.secondary, [aria-label="Close"]');
+
+                titleEl.textContent = title;
+                messageEl.textContent = message;
+                if (input) {
+                    inputEl.style.display = 'block';
+                    inputEl.value = value;
+                } else {
+                    inputEl.style.display = 'none';
+                }
+
+                const cleanup = () => {
+                    confirmBtn.onclick = null;
+                    inputEl.onkeydown = null;
+                    cancelBtns.forEach(btn => btn.onclick = null);
+                    modal.close();
+                };
+
+                const handleConfirm = () => {
+                    const result = input ? inputEl.value : true;
+                    cleanup();
+                    resolve(result);
+                };
+
+                const handleCancel = () => {
+                    cleanup();
+                    resolve(null);
+                };
+
+                confirmBtn.onclick = handleConfirm;
+                cancelBtns.forEach(btn => btn.onclick = handleCancel);
+                inputEl.onkeydown = (e) => { if (e.key === 'Enter') handleConfirm(); };
+                
+                modal.showModal();
+                if (input) setTimeout(() => inputEl.focus(), 50);
+            });
+        }
+
+        // Remove the separate closeModal function as it's handled inside showModal
 
         async function fetchAPI(endpoint, options = {}) {
             try {
@@ -262,33 +361,83 @@
             }
         }
 
-        async function loadDashboard() {
+        async function navigate() {
+            const hash = window.location.hash;
+            if (hash.startsWith('#/dir/')) {
+                const path = decodeURIComponent(hash.substring(6));
+                await enterDirectory(path, false);
+            } else {
+                await loadDashboard(false);
+            }
+        }
+
+        async function loadDashboard(push = true) {
+            if (push) window.location.hash = '/';
             state.loading = true; render();
             state.directories = await fetchAPI('/list');
             state.view = 'dashboard';
             state.loading = false; render();
         }
 
-        async function enterDirectory(path) {
+        async function enterDirectory(path, push = true) {
+            if (push) window.location.hash = `/dir/${encodeURIComponent(path)}`;
             state.loading = true;
             state.currentPath = path; render();
             state.files = await fetchAPI(`/files?path=${path}`);
+            if (state.directories.length === 0) {
+                state.directories = await fetchAPI('/list');
+            }
             state.view = 'directory';
             state.loading = false; render();
         }
 
         async function handleMkdir() {
-            const nextNum = (state.directories.length + 1).toString().padStart(3, '0');
+            let nextNum = (state.directories.length + 1).toString().padStart(3, '0');
+            const nums = state.directories
+                .map(d => parseInt(d.name))
+                .filter(n => !isNaN(n));
+            if (nums.length > 0) {
+                nextNum = (Math.max(...nums) + 1).toString().padStart(3, '0');
+            }
+
+            const name = await showModal({
+                title: 'New Folder',
+                message: 'Enter folder name:',
+                input: true,
+                value: nextNum
+            });
+            if (!name) return;
+
             await fetchAPI('/mkdir', { 
                 method: 'POST', 
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name: nextNum }) 
+                body: JSON.stringify({ name: name }) 
             });
-            loadDashboard();
+            await loadDashboard(false);
+        }
+
+        async function handleRmdir(e, name) {
+            e.stopPropagation();
+            const confirmed = await showModal({
+                title: 'Delete Directory',
+                message: `Delete directory "${name}" and all its contents permanently?`
+            });
+            if (!confirmed) return;
+            await fetchAPI('/rmdir', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: name })
+            });
+            await loadDashboard(false);
         }
 
         async function handleRename(oldName) {
-            const newName = prompt(`Rename "${oldName}" to:`, oldName);
+            const newName = await showModal({
+                title: 'Rename File',
+                message: `Rename "${oldName}" to:`,
+                input: true,
+                value: oldName
+            });
             if (!newName || newName === oldName) return;
             await fetchAPI('/rename', {
                 method: 'POST',
@@ -298,20 +447,63 @@
             enterDirectory(state.currentPath);
         }
 
+        async function handleDelete(fileName) {
+            const confirmed = await showModal({
+                title: 'Delete File',
+                message: `Delete "${fileName}" permanently?`
+            });
+            if (!confirmed) return;
+            await fetchAPI('/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ path: state.currentPath, file_name: fileName })
+            });
+            enterDirectory(state.currentPath);
+        }
+
         async function handleUpload(files) {
             if (!files || files.length === 0) return;
             state.loading = true; render();
             
-            for (const file of files) {
+            for (let file of files) {
+                const type = file.type.startsWith('image/') ? 'cover' : 'mp3';
+                
+                if (type === 'cover') {
+                    // Convert to JPEG client-side
+                    file = await convertToJpeg(file);
+                }
+
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('path', state.currentPath);
-                const type = file.type.startsWith('image/') ? 'cover' : 'mp3';
                 formData.append('type', type);
                 await fetchAPI('/upload', { method: 'POST', body: formData });
             }
             
+            // Refresh directory list and current view
+            state.directories = await fetchAPI('/list');
             enterDirectory(state.currentPath);
+        }
+
+        async function convertToJpeg(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        canvas.toBlob((blob) => {
+                            resolve(new File([blob], "cover.jpg", { type: 'image/jpeg' }));
+                        }, 'image/jpeg', 0.9);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
         }
 
         function setupDragAndDrop() {
@@ -327,7 +519,10 @@
                 zone.addEventListener(name, () => zone.classList.remove('drag-over'));
             });
 
-            zone.addEventListener('drop', e => handleUpload(e.dataTransfer.files));
+            zone.addEventListener('drop', e => {
+                zone.classList.remove('drag-over');
+                handleUpload(e.dataTransfer.files);
+            });
         }
 
         function render() {
@@ -348,17 +543,18 @@
                 state.directories.forEach(dir => {
                     html += `
                         <div class="dir-card" onclick="enterDirectory('${dir.name}')">
+                            <div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>
                             ${dir.cover ? `<img src="${dir.cover}">` : `<div class="placeholder-img"><span>No Cover</span></div>`}
                             <span class="name">${dir.name}</span>
                             <span class="first-mp3">${dir.first_mp3 || 'Empty'}</span>
                         </div>
                     `;
                 });
-                // Add Directory Card
+                // Add Folder Card
                 html += `
                     <div class="dir-card add-card" onclick="handleMkdir()">
                         ${ICONS.plus}
-                        <span class="name">New Directory</span>
+                        <span class="name">New Folder</span>
                     </div>
                 `;
                 html += `</div>`;
@@ -373,40 +569,66 @@
                 navRight.innerHTML = ``;
                 
                 let html = `
-                    <div id="drop-zone" class="dir-container">
-                        <!-- Left: File List -->
+                    <div class="dir-container">
+                        <!-- Left: Combined File List -->
                         <section>
                             <div class="header-row">
-                                <h2>Audio Files</h2>
+                                <h2>Contents</h2>
                             </div>
                             
                             <div class="file-list">
-                                <label class="file-item upload-item">
-                                    <input type="file" accept="audio/mpeg" multiple onchange="handleUpload(this.files)">
-                                    <span class="file-icon">${ICONS.plus}</span>
-                                    <span class="file-name">Add MP3 Files...</span>
-                                </label>
                 `;
 
-                const mp3s = state.files.filter(f => f.name.endsWith('.mp3'));
-                if (mp3s.length === 0) {
-                    html += `<div class="file-item" style="justify-content:center; color:var(--pico-muted-color);">No files yet. Drag & drop or click above.</div>`;
-                } else {
-                    mp3s.forEach(file => {
-                        html += `
-                            <div class="file-item">
-                                <span class="file-icon">${ICONS.music}</span>
-                                <span class="file-name">${file.name}</span>
-                                <span class="edit-icon" onclick="handleRename('${file.name}')" title="Rename">
-                                    ${ICONS.edit}
-                                </span>
-                            </div>
-                        `;
-                    });
+                const mp3s = state.files.filter(f => f.name.toLowerCase().endsWith('.mp3'));
+                const others = state.files.filter(f => !f.name.toLowerCase().endsWith('.mp3') && f.name.toLowerCase() !== 'cover.jpg');
+
+                const renderFileItem = (file, icon) => {
+                    const fileUrl = `${API_BASE}/file?path=${state.currentPath}&name=${file.name}`;
+                    return `
+                        <div class="file-item">
+                            <span class="file-icon">${icon}</span>
+                            <span class="file-name">${file.name}</span>
+                            <a href="${fileUrl}" target="_blank" class="action-icon" title="Download">
+                                ${ICONS.download}
+                            </a>
+                            <span class="action-icon" onclick="handleRename('${file.name}')" title="Rename">
+                                ${ICONS.edit}
+                            </span>
+                            <span class="action-icon delete" onclick="handleDelete('${file.name}')" title="Delete">
+                                ${ICONS.trash}
+                            </span>
+                        </div>
+                    `;
+                };
+
+                if (mp3s.length > 0) {
+                    html += `<div class="file-item separator">Audio Files</div>`;
+                    mp3s.forEach(file => { html += renderFileItem(file, ICONS.music); });
                 }
-                html += `</div></section>`;
+
+                if (others.length > 0) {
+                    html += `<div class="file-item separator">Other Files</div>`;
+                    others.forEach(file => { html += renderFileItem(file, ICONS.file); });
+                }
+
+                if (mp3s.length === 0 && others.length === 0) {
+                    html += `<div class="file-item" style="justify-content:center; color:var(--pico-muted-color);">Empty. Drag & drop or click below.</div>`;
+                }
+
+                html += `
+                                <label id="drop-zone" class="file-item upload-item" style="border-top: 1px solid var(--pico-muted-border-color);">
+                                    <input type="file" multiple onchange="handleUpload(this.files)">
+                                    <span class="file-icon">${ICONS.plus}</span>
+                                    <span class="file-name">Click or Drag & Drop to Upload...</span>
+                                </label>
+                            </div>
+                        </section>
+                `;
 
                 // Right: Album Cover Preview
+                const coverFile = state.files.find(f => f.name.toLowerCase() === 'cover.jpg');
+                const coverUrl = coverFile ? `${API_BASE}/file?path=${state.currentPath}&name=${coverFile.name}` : null;
+                
                 html += `
                     <section>
                         <div class="header-row">
@@ -414,11 +636,15 @@
                         </div>
                         <div class="cover-preview-card">
                             <div style="position:relative; margin:0 auto; max-width:100%;">
-                                ${currentDir?.cover ? `<img src="${currentDir.cover}">` : `<div class="placeholder-img" style="aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; background:var(--pico-secondary-focus); color:var(--pico-secondary); border-radius:8px;">No Cover</div>`}
+                                ${coverUrl ? `<img src="${coverUrl}">` : `<div class="placeholder-img" style="aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; background:var(--pico-secondary-focus); color:var(--pico-secondary); border-radius:8px;">No Cover</div>`}
                                 <label class="cover-edit-overlay" title="Change Cover">
                                     <input type="file" accept="image/*" style="display:none" onchange="handleUpload(this.files)">
                                     ${ICONS.edit}
                                 </label>
+                                ${coverUrl ? `
+                                <div class="cover-delete-overlay" title="Delete Cover" onclick="handleDelete('cover.jpg')">
+                                    ${ICONS.trash}
+                                </div>` : ''}
                             </div>
                             <p style="margin-top:0.5rem; font-size:0.8rem; color:var(--pico-muted-color);">Supports JPG, PNG, WEBP</p>
                         </div>
@@ -431,7 +657,8 @@
             }
         }
 
-        window.onload = loadDashboard;
+        window.addEventListener('hashchange', navigate);
+        window.onload = navigate;
     </script>
 </body>
 </html>
