@@ -16,11 +16,11 @@ def combine_chunk(cards, output_file):
 
     line_width = int((1 / MM_TO_INCH) * DPI) # ~11-12 px for 1mm
     
-    # Calculate scaled card dimensions to fit exactly between lines
-    # (2 cards + 1 gap = SHEET_W)
-    # (3 cards + 2 gaps = SHEET_H)
-    CARD_W = (SHEET_W - line_width) // 2
-    CARD_H = (SHEET_H - 2 * line_width) // 3
+    # Calculate scaled card dimensions to fit with 1mm margin around each card.
+    # Total width: 3 margins (Left, Center, Right) + 2 cards = SHEET_W
+    # Total height: 4 margins (Top, Mid1, Mid2, Bottom) + 3 cards = SHEET_H
+    CARD_W = (SHEET_W - 3 * line_width) // 2
+    CARD_H = (SHEET_H - 4 * line_width) // 3
 
     sheet = Image.new("RGB", (SHEET_W, SHEET_H), "white")
 
@@ -37,9 +37,9 @@ def combine_chunk(cards, output_file):
         if col == 1:
             card_img = card_img.transpose(Image.ROTATE_180)
             
-        # Offset includes the gap for the cut lines
-        x_offset = col * (CARD_W + line_width)
-        y_offset = row * (CARD_H + line_width)
+        # Offset includes the gap for the margins
+        x_offset = line_width + col * (CARD_W + line_width)
+        y_offset = line_width + row * (CARD_H + line_width)
         
         sheet.paste(card_img, (x_offset, y_offset))
 
