@@ -54,24 +54,47 @@ body {
     display: block;
 }
 .dir-card { position: relative; }
-.dir-card .delete-btn {
+.dir-card .delete-btn, .dir-card .select-overlay {
     position: absolute;
     top: 0.5rem;
-    right: 0.5rem;
-    opacity: 0;
-    transition: opacity 0.2s;
     background: var(--pico-card-background-color);
+    border: 1px solid var(--pico-muted-border-color);
     border-radius: 50%;
     width: 28px;
     height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--pico-muted-border-color);
-    color: var(--pico-error-background);
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 5;
 }
+.dir-card .delete-btn { right: 0.5rem; opacity: 0; color: var(--pico-error-background); }
 .dir-card:hover .delete-btn { opacity: 1; }
 .dir-card .delete-btn:hover { background: var(--pico-error-background); color: white; border-color: var(--pico-error-background); }
+
+.dir-card .select-overlay { left: 0.5rem; opacity: 0; color: var(--pico-primary); }
+.selection-mode .dir-card .select-overlay { opacity: 1; }
+.dir-card.selected { border-color: var(--pico-primary); box-shadow: 0 0 0 2px var(--pico-primary); }
+.dir-card.selected .select-overlay { background: var(--pico-primary); color: white; border-color: var(--pico-primary); }
+
+/* Selection Action Bar */
+.selection-bar {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--pico-card-background-color);
+    border: 1px solid var(--pico-primary);
+    padding: 0.75rem 1.5rem;
+    border-radius: 100px;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    z-index: 100;
+}
+.selection-bar span { font-weight: bold; }
+.selection-bar button { margin: 0; padding: 0.4rem 1rem; }
 
 /* New Folder Card */
 .add-card {

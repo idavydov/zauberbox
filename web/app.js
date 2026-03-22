@@ -10,7 +10,9 @@ let state = {
     currentPath: null,
     directories: [],
     files: [],
-    loading: true
+    loading: true,
+    selectionMode: false,
+    selectedDirs: new Set()
 };
 
 const MOCK_DATA = [
@@ -27,8 +29,24 @@ const ICONS = {
     back: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`,
     image: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
     file: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`,
-    download: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`
+    download: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
+    check: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
 };
+
+function toggleSelectionMode() {
+    state.selectionMode = !state.selectionMode;
+    if (!state.selectionMode) state.selectedDirs.clear();
+    render();
+}
+
+function toggleDirSelection(name) {
+    if (state.selectedDirs.has(name)) {
+        state.selectedDirs.delete(name);
+    } else {
+        state.selectedDirs.add(name);
+    }
+    render();
+}
 
 function showModal({ title, message, input = false, value = '', confirmText = 'Confirm', cancelText = 'Cancel', showCancel = true }) {
     return new Promise((resolve) => {
@@ -227,18 +245,99 @@ async function handleUpload(files) {
     enterDirectory(state.currentPath);
 }
 
+async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset, width, height) {
+    const QR_WIDTH_RATIO = 0.33;
+    const QR_SECTION_WIDTH = Math.round(width * QR_WIDTH_RATIO);
+    const COVER_WIDTH = width - QR_SECTION_WIDTH;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error(`Failed to load cover: ${dirName}`));
+        img.src = coverUrl;
+    });
+
+    const imgAspect = img.width / img.height;
+    const targetAspect = COVER_WIDTH / height;
+    let sx, sy, sWidth, sHeight;
+
+    if (imgAspect > targetAspect) {
+        sHeight = img.height;
+        sWidth = img.height * targetAspect;
+        sx = (img.width - sWidth) / 2;
+        sy = 0;
+    } else {
+        sWidth = img.width;
+        sHeight = img.width / targetAspect;
+        sx = 0;
+        sy = (img.height - sHeight) / 2;
+    }
+    ctx.drawImage(img, sx, sy, sWidth, sHeight, xOffset, yOffset, COVER_WIDTH, height);
+
+    const colors = getDominantColors(ctx, width, height, xOffset, yOffset);
+    const noiseCanvas = document.createElement('canvas');
+    noiseCanvas.width = 5;
+    noiseCanvas.height = 5;
+    const noiseCtx = noiseCanvas.getContext('2d');
+    for (let y = 0; y < 5; y++) {
+        for (let x = 0; x < 5; x++) {
+            noiseCtx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+            noiseCtx.fillRect(x, y, 1, 1);
+        }
+    }
+
+    ctx.save();
+    if (ctx.filter !== undefined) {
+        ctx.filter = `blur(${QR_SECTION_WIDTH / 4}px)`;
+    }
+    ctx.drawImage(noiseCanvas, xOffset + COVER_WIDTH - 10, yOffset - 10, QR_SECTION_WIDTH + 20, height + 20);
+    ctx.restore();
+
+    const uri = `file://${dirName}`;
+    const qrSize = Math.min(QR_SECTION_WIDTH, height) * 0.8;
+    const qrContainer = document.createElement('div');
+    new QRCode(qrContainer, {
+        text: uri,
+        width: qrSize,
+        height: qrSize,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const qrCanvas = qrContainer.querySelector('canvas');
+    const qrX = xOffset + COVER_WIDTH + (QR_SECTION_WIDTH - qrSize) / 2;
+    const qrY = yOffset + (height - qrSize) / 2;
+    ctx.drawImage(qrCanvas, qrX, qrY);
+
+    if (mp3s.length > 0) {
+        const fontSize = 24;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textBaseline = 'bottom';
+        const margin = 15;
+        const lineHeight = fontSize + 4;
+        const maxTracks = Math.floor((height - (margin * 2)) / lineHeight);
+        const visibleTracks = mp3s.slice(0, maxTracks);
+        const totalTextHeight = visibleTracks.length * lineHeight;
+        let currentY = yOffset + height - margin - totalTextHeight + fontSize;
+
+        visibleTracks.forEach(track => {
+            drawTextWithOutline(ctx, track, xOffset + margin, currentY);
+            currentY += lineHeight;
+        });
+    }
+}
+
 async function handleGenerateCard() {
+    const currentDir = state.directories.find(d => d.name === state.currentPath);
     const coverUrl = state.files.find(f => f.name.toLowerCase() === 'cover.jpg') 
         ? `${API_BASE}/file?path=${state.currentPath}&name=cover.jpg` 
         : null;
 
     if (!coverUrl) {
-        await showModal({ 
-            title: 'Error', 
-            message: 'Please upload a cover image first.',
-            confirmText: 'OK',
-            showCancel: false 
-        });
+        await showModal({ title: 'Error', message: 'Please upload a cover image first.', confirmText: 'OK', showCancel: false });
         return;
     }
 
@@ -249,98 +348,18 @@ async function handleGenerateCard() {
         const MM_TO_INCH = 25.4;
         const WIDTH_PX = Math.round((76 / MM_TO_INCH) * DPI);
         const HEIGHT_PX = Math.round((34 / MM_TO_INCH) * DPI);
-        const QR_WIDTH_RATIO = 0.33;
-        const QR_SECTION_WIDTH = Math.round(WIDTH_PX * QR_WIDTH_RATIO);
-        const COVER_WIDTH = WIDTH_PX - QR_SECTION_WIDTH;
 
         const canvas = document.createElement('canvas');
         canvas.width = WIDTH_PX;
         canvas.height = HEIGHT_PX;
         const ctx = canvas.getContext('2d');
 
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = () => reject(new Error("Failed to load cover image."));
-            img.src = coverUrl;
-        });
-
-        const imgAspect = img.width / img.height;
-        const targetAspect = COVER_WIDTH / HEIGHT_PX;
-        let sx, sy, sWidth, sHeight;
-
-        if (imgAspect > targetAspect) {
-            sHeight = img.height;
-            sWidth = img.height * targetAspect;
-            sx = (img.width - sWidth) / 2;
-            sy = 0;
-        } else {
-            sWidth = img.width;
-            sHeight = img.width / targetAspect;
-            sx = 0;
-            sy = (img.height - sHeight) / 2;
-        }
-        ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, COVER_WIDTH, HEIGHT_PX);
-
-        const colors = getDominantColors(ctx, COVER_WIDTH, HEIGHT_PX);
-        const noiseCanvas = document.createElement('canvas');
-        noiseCanvas.width = 5;
-        noiseCanvas.height = 5;
-        const noiseCtx = noiseCanvas.getContext('2d');
-        for (let y = 0; y < 5; y++) {
-            for (let x = 0; x < 5; x++) {
-                noiseCtx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-                noiseCtx.fillRect(x, y, 1, 1);
-            }
-        }
-
-        ctx.save();
-        if (ctx.filter !== undefined) {
-            ctx.filter = `blur(${QR_SECTION_WIDTH / 4}px)`;
-        }
-        ctx.drawImage(noiseCanvas, COVER_WIDTH - 10, -10, QR_SECTION_WIDTH + 20, HEIGHT_PX + 20);
-        ctx.restore();
-
-        const uri = `file://${state.currentPath}`;
-        const qrSize = Math.min(QR_SECTION_WIDTH, HEIGHT_PX) * 0.8;
-        const qrContainer = document.createElement('div');
-        new QRCode(qrContainer, {
-            text: uri,
-            width: qrSize,
-            height: qrSize,
-            colorDark : "#000000",
-            colorLight : "#ffffff",
-            correctLevel : QRCode.CorrectLevel.H
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 50));
-        const qrCanvas = qrContainer.querySelector('canvas');
-        const qrX = COVER_WIDTH + (QR_SECTION_WIDTH - qrSize) / 2;
-        const qrY = (HEIGHT_PX - qrSize) / 2;
-        ctx.drawImage(qrCanvas, qrX, qrY);
-
         const mp3s = state.files
             .filter(f => f.name.toLowerCase().endsWith('.mp3'))
             .map(f => f.name.replace(/\.mp3$/i, ''))
             .sort();
 
-        if (mp3s.length > 0) {
-            const fontSize = 24;
-            ctx.font = `bold ${fontSize}px sans-serif`;
-            ctx.textBaseline = 'bottom';
-            const margin = 15;
-            const lineHeight = fontSize + 4;
-            const maxTracks = Math.floor((HEIGHT_PX - (margin * 2)) / lineHeight);
-            const visibleTracks = mp3s.slice(0, maxTracks);
-            const totalTextHeight = visibleTracks.length * lineHeight;
-            let currentY = HEIGHT_PX - margin - totalTextHeight + fontSize;
-
-            visibleTracks.forEach(track => {
-                drawTextWithOutline(ctx, track, margin, currentY);
-                currentY += lineHeight;
-            });
-        }
+        await generateSingleCard(ctx, state.currentPath, coverUrl, mp3s, 0, 0, WIDTH_PX, HEIGHT_PX);
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         const link = document.createElement('a');
@@ -349,19 +368,84 @@ async function handleGenerateCard() {
         link.click();
 
     } catch (err) {
-        await showModal({ 
-            title: 'Error', 
-            message: 'Failed to generate card.',
-            confirmText: 'OK',
-            showCancel: false 
-        });
+        await showModal({ title: 'Error', message: 'Failed to generate card.', confirmText: 'OK', showCancel: false });
     } finally {
         state.loading = false; render();
     }
 }
 
-function getDominantColors(ctx, width, height) {
-    const data = ctx.getImageData(0, 0, width, height).data;
+async function handleDownloadSheets() {
+    if (state.selectedDirs.size === 0) return;
+    state.loading = true; render();
+    try {
+        const DPI = 300;
+        const MM_TO_INCH = 25.4;
+        const CARD_W_PX = Math.round((76 / MM_TO_INCH) * DPI);
+        const CARD_H_PX = Math.round((34 / MM_TO_INCH) * DPI);
+        const WIDTH_PX = Math.round((152 / MM_TO_INCH) * DPI);
+        const HEIGHT_PX = Math.round((102 / MM_TO_INCH) * DPI);
+
+        const selectedNames = Array.from(state.selectedDirs);
+        for (let i = 0; i < selectedNames.length; i += 6) {
+            const chunk = selectedNames.slice(i, i + 6);
+            const canvas = document.createElement('canvas');
+            canvas.width = WIDTH_PX; canvas.height = HEIGHT_PX;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white'; ctx.fillRect(0, 0, WIDTH_PX, HEIGHT_PX);
+
+            for (let j = 0; j < chunk.length; j++) {
+                const name = chunk[j];
+                const files = await fetchAPI(`/files?path=${name}`);
+                const coverUrl = `${API_BASE}/file?path=${name}&name=cover.jpg`;
+                const mp3s = files.filter(f => f.name.toLowerCase().endsWith('.mp3')).map(f => f.name.replace(/\.mp3$/i, '')).sort();
+                await generateSingleCard(ctx, name, coverUrl, mp3s, (j % 2) * CARD_W_PX, Math.floor(j / 2) * CARD_H_PX, CARD_W_PX, CARD_H_PX);
+            }
+
+            // Add 0.5mm white lines between cards
+            const SEPARATOR_PX = Math.round((0.5 / MM_TO_INCH) * DPI);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = SEPARATOR_PX;
+            
+            // Vertical separator
+            ctx.beginPath();
+            ctx.moveTo(CARD_W_PX, 0);
+            ctx.lineTo(CARD_W_PX, HEIGHT_PX);
+            ctx.stroke();
+
+            // Horizontal separators
+            ctx.beginPath();
+            ctx.moveTo(0, CARD_H_PX);
+            ctx.lineTo(WIDTH_PX, CARD_H_PX);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(0, CARD_H_PX * 2);
+            ctx.lineTo(WIDTH_PX, CARD_H_PX * 2);
+            ctx.stroke();
+
+            // Add 1mm white frame around the sheet
+            const FRAME_PX = Math.round((1 / MM_TO_INCH) * DPI);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = FRAME_PX * 2;
+            ctx.strokeRect(0, 0, WIDTH_PX, HEIGHT_PX);
+
+            const link = document.createElement('a');
+            link.download = `sheet_${Math.floor(i/6) + 1}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+            await new Promise(r => setTimeout(r, 500));
+        }
+        toggleSelectionMode();
+    } catch (err) {
+        console.error(err);
+        await showModal({ title: 'Error', message: 'Failed to generate sheets.', confirmText: 'OK', showCancel: false });
+    } finally {
+        state.loading = false; render();
+    }
+}
+
+function getDominantColors(ctx, width, height, xOffset = 0, yOffset = 0) {
+    const data = ctx.getImageData(xOffset, yOffset, width, height).data;
     const sampleCount = 100;
     const colors = [];
     for (let i = 0; i < sampleCount; i++) {
@@ -432,26 +516,38 @@ function render() {
 
     if (state.view === 'dashboard') {
         navLeft.innerHTML = `<li><strong>Zauberbox</strong></li>`;
-        navRight.innerHTML = ``;
+        navRight.innerHTML = `<li><button class="${state.selectionMode ? 'primary' : 'contrast outline'}" style="padding: 4px 8px;" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select'}</button></li>`;
         
-        let html = `<h2>Directories</h2><div class="dir-grid">`;
+        let html = `<div class="${state.selectionMode ? 'selection-mode' : ''}"><h2>Directories</h2><div class="dir-grid">`;
         state.directories.forEach(dir => {
+            const isSelected = state.selectedDirs.has(dir.name);
             html += `
-                <div class="dir-card" onclick="enterDirectory('${dir.name}')">
-                    <div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>
+                <div class="dir-card ${isSelected ? 'selected' : ''}" onclick="${state.selectionMode ? `toggleDirSelection('${dir.name}')` : `enterDirectory('${dir.name}')`}">
+                    ${state.selectionMode ? `<div class="select-overlay">${ICONS.check}</div>` : `<div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>`}
                     ${dir.cover ? `<img src="${dir.cover}">` : `<div class="placeholder-img"><span>No Cover</span></div>`}
                     <span class="name">${dir.name}</span>
                     <span class="first-mp3">${dir.first_mp3 || 'Empty'}</span>
                 </div>
             `;
         });
-        html += `
-            <div class="dir-card add-card" onclick="handleMkdir()">
-                ${ICONS.plus}
-                <span class="name">New Folder</span>
-            </div>
-        `;
-        html += `</div>`;
+        if (!state.selectionMode) {
+            html += `
+                <div class="dir-card add-card" onclick="handleMkdir()">
+                    ${ICONS.plus}
+                    <span class="name">New Folder</span>
+                </div>
+            `;
+        }
+        html += `</div></div>`;
+
+        if (state.selectionMode && state.selectedDirs.size > 0) {
+            html += `
+                <div class="selection-bar">
+                    <span>${state.selectedDirs.size} selected</span>
+                    <button class="primary" onclick="handleDownloadSheets()">${ICONS.download} Download Sheets</button>
+                </div>
+            `;
+        }
         app.innerHTML = html;
     } else {
         navLeft.innerHTML = `
