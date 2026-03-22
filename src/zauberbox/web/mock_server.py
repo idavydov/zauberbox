@@ -8,12 +8,21 @@ app = Flask(__name__)
 
 # Configurable storage directory
 STORAGE_DIR = "mock_sd"
-# Web files are in the same directory as this script
-WEB_DIR = os.path.dirname(os.path.abspath(__file__))
+# Project root is 4 levels up from this script (src/zauberbox/web/mock_server.py)
+PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(PACKAGE_DIR, "..", "..", ".."))
+# Web files are in the 'web' directory at project root
+WEB_DIR = os.path.join(PROJECT_ROOT, "web")
 
 @app.route('/')
 def index():
     return send_from_directory(WEB_DIR, 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    if filename in ['style.css', 'app.js', 'pico.min.css']:
+        return send_from_directory(WEB_DIR, filename)
+    return "", 404
 
 @app.route('/api/list')
 def list_directories():
@@ -132,6 +141,7 @@ def main():
     
     STORAGE_DIR = os.path.abspath(args.root)
     print(f"Mock server starting. Storage: {STORAGE_DIR}")
+    print(f"Web source directory: {WEB_DIR}")
     
     if not os.path.exists(STORAGE_DIR):
         os.makedirs(STORAGE_DIR)

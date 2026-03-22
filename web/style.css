@@ -1,0 +1,224 @@
+:root {
+    --pico-font-size: 16px;
+    --pico-border-radius: 12px;
+}
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Dashboard Styles */
+.dir-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+.dir-card {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    background: var(--pico-card-background-color);
+    text-align: center;
+}
+.dir-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    border-color: var(--pico-primary);
+}
+.dir-card img, .dir-card .placeholder-img {
+    width: 100%;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+}
+.dir-card .placeholder-img {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pico-secondary-focus);
+    color: var(--pico-secondary);
+}
+.dir-card .name { font-weight: bold; font-size: 1.1rem; display: block; }
+.dir-card .first-mp3 {
+    font-size: 0.75rem;
+    color: var(--pico-muted-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+.dir-card { position: relative; }
+.dir-card .delete-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+    background: var(--pico-card-background-color);
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--pico-muted-border-color);
+    color: var(--pico-error-background);
+}
+.dir-card:hover .delete-btn { opacity: 1; }
+.dir-card .delete-btn:hover { background: var(--pico-error-background); color: white; border-color: var(--pico-error-background); }
+
+/* New Folder Card */
+.add-card {
+    border: 2px dashed var(--pico-muted-border-color);
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    color: var(--pico-muted-color);
+}
+.add-card:hover {
+    border-color: var(--pico-primary);
+    color: var(--pico-primary);
+    background: var(--pico-primary-focus);
+}
+.add-card svg { margin-bottom: 0.5rem; }
+
+/* Directory View Layout */
+.dir-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    margin-top: 1rem;
+}
+@media (min-width: 992px) {
+    .dir-container {
+        grid-template-columns: 2fr 1fr;
+        align-items: start;
+    }
+}
+
+/* File List Styles */
+.file-list {
+    background: var(--pico-card-background-color);
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    overflow: hidden;
+}
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    transition: background 0.2s;
+}
+.file-item:last-child { border-bottom: none; }
+.file-item:hover:not(.separator) { background: var(--pico-secondary-focus); }
+
+.file-item .file-icon { margin-right: 12px; color: var(--pico-primary); display: flex; }
+.file-item .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.file-item.separator {
+    background: var(--pico-secondary-focus);
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05rem;
+    color: var(--pico-muted-color);
+    padding: 0.4rem 1rem;
+}
+
+/* Cover Preview Styles */
+.cover-preview-card {
+    background: var(--pico-card-background-color);
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    padding: 1rem;
+    text-align: center;
+    position: relative;
+}
+.cover-preview-card img, .cover-preview-card .placeholder-img {
+    width: 100%;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    display: block;
+    background: var(--pico-secondary-focus);
+}
+.cover-edit-overlay, .cover-delete-overlay {
+    position: absolute;
+    background: var(--pico-card-background-color);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    cursor: pointer;
+    transition: transform 0.2s;
+    border: 1px solid var(--pico-muted-border-color);
+}
+.cover-edit-overlay {
+    top: 1.5rem;
+    right: 1.5rem;
+    color: var(--pico-primary);
+}
+.cover-delete-overlay {
+    top: 1.5rem;
+    left: 1.5rem;
+    color: var(--pico-error-background);
+}
+.cover-edit-overlay:hover, .cover-delete-overlay:hover { transform: scale(1.1); }
+
+/* Inline Upload Item */
+.upload-item {
+    color: var(--pico-primary);
+    font-weight: bold;
+    cursor: pointer;
+    background: var(--pico-primary-focus);
+    position: relative;
+    padding: 2rem 1rem;
+    min-height: 80px;
+    justify-content: center;
+}
+.upload-item:hover { background: var(--pico-primary-hover); color: white; }
+.upload-item input { display: none; }
+
+/* Drag & Drop Overlay */
+.upload-item.drag-over::after {
+    content: 'Drop to upload';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(var(--pico-primary-rgb), 0.2);
+    border: 2px dashed var(--pico-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Utilities */
+.header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+.header-row h2 { margin: 0; flex: 1; font-size: 1.5rem; }
+.action-icon {
+    margin-left: 12px;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s, color 0.2s;
+    display: inline-flex;
+}
+.action-icon:hover { opacity: 1; color: var(--pico-primary); }
+.action-icon.delete:hover { color: var(--pico-error-background); }
+.action-icon svg { width: 16px; height: 16px; vertical-align: middle; }
+
+#app { flex: 1; }

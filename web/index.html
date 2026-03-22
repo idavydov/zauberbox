@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zauberbox Manager</title>
+    <link rel="stylesheet" href="pico.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="container">
+        <nav>
+            <ul id="nav-left">
+                <li><strong>Zauberbox</strong></li>
+            </ul>
+            <ul id="nav-right">
+                <!-- Dashboard actions here -->
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container" id="app">
+        <div aria-busy="true" id="loading">Initializing...</div>
+    </main>
+
+    <footer class="container">
+        <hr>
+        <small>ESP32 Zauberbox &bull; <a href="#" onclick="loadDashboard(); return false;">Home</a> &bull; <a href="https://github.com/idavydov/zauberbox" target="_blank">GitHub</a></small>
+        <br>
+        <small style="opacity: 0.6;">Icons by <a href="https://lucide.dev" target="_blank">Lucide</a> (ISC License) &bull; CSS by <a href="https://picocss.com" target="_blank">Pico</a> (MIT License)</small>
+    </footer>
+
+    <dialog id="modal">
+        <article>
+            <header>
+                <button aria-label="Close" rel="prev"></button>
+                <p><strong id="modal-title">Confirm</strong></p>
+            </header>
+            <p id="modal-message">Are you sure?</p>
+            <input type="text" id="modal-input" style="display:none;">
+            <footer>
+                <button class="secondary">Cancel</button>
+                <button id="modal-confirm">Confirm</button>
+            </footer>
+        </article>
+    </dialog>
+
+    <script src="app.js"></script>
+</body>
+</html>
