@@ -8,7 +8,8 @@ def build():
     project_root = os.path.abspath(os.path.join(package_dir, "..", "..", ".."))
     
     web_src_dir = os.path.join(project_root, "web")
-    dist_dir = os.path.join(project_root, "dist")
+    # Output directly to firmware/data for LittleFS
+    dist_dir = os.path.join(project_root, "firmware", "data")
 
     index_path = os.path.join(web_src_dir, "index.html")
     pico_path = os.path.join(web_src_dir, "pico.min.css")
