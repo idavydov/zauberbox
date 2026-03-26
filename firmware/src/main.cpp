@@ -121,6 +121,10 @@ void setup() {
     ring.setBrightness(50);
     xTaskCreatePinnedToCore(ledTask, "LED_Task", 4096, NULL, 1, NULL, 1);
 
+    if (!LittleFS.begin(true)) {
+        Serial.println("LittleFS Mount Failed!");
+    }
+
     awm.setAPCredentials("Zauberbox-Config", "123456789");
     awm.begin();
 
