@@ -17,7 +17,8 @@ def build():
     app_path = os.path.join(web_src_dir, "app.js")
     qr_path = os.path.join(web_src_dir, "qrcode.min.js")
     
-    output_path = os.path.join(dist_dir, "index.html")
+    # Use app.html to avoid collision with WiFiManager's index.html
+    output_path = os.path.join(dist_dir, "app.html")
     output_gz_path = output_path + ".gz"
 
     os.makedirs(dist_dir, exist_ok=True)

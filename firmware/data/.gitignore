@@ -1,3 +1,2 @@
-# Ignore generated web assets
-index.html.gz
-index.html
+# Ignore generated app assets
+app.html

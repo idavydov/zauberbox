@@ -1,0 +1,25 @@
+# PlatformIO
+.pio
+.pio_build
+.vscode
+*.elf
+*.bin
+*.map
+
+# ESP-IDF
+sdkconfig
+sdkconfig.old
+sdkconfig.*
+!sdkconfig.defaults
+managed_components/
+dependencies.lock
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# System
+.DS_Store
+Thumbs.db
