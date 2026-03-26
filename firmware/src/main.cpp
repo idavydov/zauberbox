@@ -7,17 +7,18 @@
 #include "driver/i2s_std.h"
 
 // Pins
-#define I2C_SDA 10
-#define I2C_SCL 11
+#define I2C_SCL 10
+#define I2C_SDA 11
 #define LED_PIN 38
 #define LED_COUNT 7
 #define TCA9555_ADDR 0x20
 
 // I2S Pins for Waveshare Board
-#define I2S_BCLK 40
-#define I2S_LRCK 41
-#define I2S_DOUT 2
-#define I2S_MCLK 39
+#define I2S_MCLK 12
+#define I2S_SCLK 13
+#define I2S_LRCK 14
+#define I2S_DOUT 15
+#define I2S_DIN 16
 #define I2S_NUM  I2S_NUM_0
 
 // States for LED Task
@@ -101,7 +102,7 @@ void setup() {
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = (gpio_num_t)I2S_MCLK,
-            .bclk = (gpio_num_t)I2S_BCLK,
+            .bclk = (gpio_num_t)I2S_SCLK,
             .ws = (gpio_num_t)I2S_LRCK,
             .dout = (gpio_num_t)I2S_DOUT,
             .din = I2S_GPIO_UNUSED,
