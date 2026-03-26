@@ -4,7 +4,7 @@
 #include <LittleFS.h>
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
-#include "driver/i2s.h"
+#include "driver/i2s_std.h"
 
 // Pins
 #define I2C_SDA 10
@@ -29,6 +29,7 @@ enum SystemState {
 volatile SystemState currentState = STATE_CONNECTING;
 Adafruit_NeoPixel ring(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 AyresWiFiManager awm;
+i2s_chan_handle_t tx_handle;
 
 /**
  * Basic ES8311 DAC Initialization via I2C
@@ -64,7 +65,7 @@ void playBip(float frequency, int duration_ms) {
         int16_t val = (sin(2 * PI * frequency * i / 44100.0) > 0) ? 4000 : -4000;
         buf[i*2] = val; buf[i*2 + 1] = val;
     }
-    i2s_write(I2S_NUM, buf, samples * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+    i2s_channel_write(tx_handle, buf, samples * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
     free(buf);
 }
 
@@ -91,26 +92,28 @@ void setup() {
     enableSpeaker();
     initES8311();
     
-    // I2S Setup
-    i2s_config_t i2s_config = {
-        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
-        .sample_rate = 44100,
-        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 8,
-        .dma_buf_len = 64,
-        .use_apll = false,
-        .tx_desc_auto_clear = true
+    // I2S Setup with New Driver
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM, I2S_ROLE_MASTER);
+    i2s_new_channel(&chan_cfg, &tx_handle, NULL);
+
+    i2s_std_config_t std_cfg = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(44100),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .gpio_cfg = {
+            .mclk = (gpio_num_t)I2S_MCLK,
+            .bclk = (gpio_num_t)I2S_BCLK,
+            .ws = (gpio_num_t)I2S_LRCK,
+            .dout = (gpio_num_t)I2S_DOUT,
+            .din = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv = false,
+            },
+        },
     };
-    i2s_pin_config_t pin_config = {
-        .bck_io_num = I2S_BCLK, .ws_io_num = I2S_LRCK, .data_out_num = I2S_DOUT, .data_in_num = I2S_PIN_NO_CHANGE
-    };
-    i2s_driver_install(I2S_NUM, &i2s_config, 0, NULL);
-    i2s_set_pin(I2S_NUM, &pin_config);
-    pinMode(I2S_MCLK, OUTPUT);
-    gpio_set_direction((gpio_num_t)I2S_MCLK, GPIO_MODE_OUTPUT);
+    i2s_channel_init_std_mode(tx_handle, &std_cfg);
+    i2s_channel_enable(tx_handle);
 
     playBip(1000, 150);
     
