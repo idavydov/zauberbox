@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -461,7 +461,7 @@
         </section>
 
         <section class="sec">
-          <h2>Conectar</h2>
+          <h2>Connect</h2>
           <form id="form" method="POST" action="/save" autocomplete="off">
             <div class="row">
               <label for="ssid">SSID</label>
@@ -470,7 +470,7 @@
                 class="input grow"
                 name="ssid"
                 required
-                placeholder="Nombre de la red"
+                placeholder="Network name"
               />
             </div>
 
@@ -483,7 +483,7 @@
                 type="password"
                 required
                 minlength="8"
-                placeholder="Contraseña"
+                placeholder="Password"
               />
             </div>
 
@@ -514,7 +514,7 @@
           </summary>
           <div class="sec acc">
             <div class="danger-zone">
-              <h3>Zona peligrosa <span class="pill">admin</span></h3>
+              <h3>Danger zone <span class="pill">admin</span></h3>
               <p class="hint">
                 Delete the <code>.json</code> files (except the protected ones)
                 and restart the computer.
@@ -593,11 +593,11 @@
           btnReload: $("#btn-reload"),
         };
 
-        // Pintar versión / textos
+        // Render version / labels
         if (els.ver) els.ver.textContent = "v" + VERSION;
         if (vf) vf.textContent = "v" + VERSION;
 
-        // Texto dinámico del auto-scan
+        // Dynamic auto-scan label
         const autoTxt = document.getElementById("autoTxt");
         if (autoTxt) autoTxt.textContent = `Auto ${AUTO_MS / 1000}s`;
 
@@ -626,16 +626,16 @@
           return wrap;
         }
         function qualityTag(rssi) {
-          let text = "Mala",
+          let text = "Poor",
             cls = "bad";
           if (rssi >= -60) {
-            text = "Buena";
+            text = "Good";
             cls = "good";
           } else if (rssi >= -67) {
-            text = "Moderada";
+            text = "Moderate";
             cls = "mid";
           } else if (rssi >= -75) {
-            text = "Débil";
+            text = "Weak";
             cls = "weak";
           }
           const span = document.createElement("span");
@@ -723,7 +723,7 @@
           }
         }
 
-        // Interacciones
+        // Interactions
         els.btnScan.addEventListener("click", () => {
           stopAuto();
           scan();
@@ -752,7 +752,7 @@
           els.btnSave.textContent = "Saving…";
         });
 
-        // Avanzadas: habilitar BORRAR
+        // Advanced: enable delete
         if (els.confirm && els.btnErase) {
           els.confirm.addEventListener("input", () => {
             const ok = els.confirm.value.trim().toUpperCase() === "CONFIRM";
@@ -793,7 +793,7 @@
           els.btnReload.addEventListener("click", () => location.reload());
         }
 
-        // Acordeón suave
+        // Smooth accordion
         (function initAccordion() {
           const det = document.querySelector("details.accordion");
           if (!det) return;
