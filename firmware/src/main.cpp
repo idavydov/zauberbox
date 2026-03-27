@@ -5,24 +5,84 @@
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
 #include "audio_driver.h"
+#include "io_expander.h"
 
 // Pins
 #define I2C_SCL 10
 #define I2C_SDA 11
 #define LED_PIN 38
 #define LED_COUNT 7
+
+constexpr uint32_t kKeyHoldMs = 3000;
 // States for LED Task
 enum SystemState {
     STATE_WAITING_AP,
     STATE_CONNECTING_WIFI,
-    STATE_CONNECTED
+    STATE_CONNECTED,
+    STATE_RESETTING
 };
 
 volatile SystemState currentState = STATE_WAITING_AP;
 Adafruit_NeoPixel ring(LED_COUNT, LED_PIN, NEO_RGB + NEO_KHZ800);
 AyresWiFiManager awm;
 
+void configureKey3Input() {
+    if (!ioExpanderPinMode(kIoExpanderKey3Pin, INPUT)) {
+        Serial.println("KEY3 config failed.");
+    }
+}
+
+bool isKey3Pressed() {
+    bool levelHigh = true;
+    if (!ioExpanderDigitalRead(kIoExpanderKey3Pin, &levelHigh)) {
+        return false;
+    }
+    return !levelHigh;
+}
+
+[[noreturn]] void eraseWifiCredentialsAndReboot() {
+    currentState = STATE_RESETTING;
+    const bool removed = LittleFS.remove("/wifi.json");
+    Serial.printf("KEY3 long press: %s /wifi.json\n", removed ? "removed" : "could not remove");
+
+    const uint32_t rebootAt = millis() + 3000;
+    while (millis() < rebootAt) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    ESP.restart();
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+void key3HoldTask(void *pvParameters) {
+    uint32_t pressedAt = 0;
+
+    while (true) {
+        if (currentState == STATE_RESETTING) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        if (isKey3Pressed()) {
+            if (pressedAt == 0) {
+                pressedAt = millis();
+            } else if (millis() - pressedAt >= kKeyHoldMs) {
+                eraseWifiCredentialsAndReboot();
+            }
+        } else {
+            pressedAt = 0;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
 SystemState computeSystemState() {
+    if (currentState == STATE_RESETTING) {
+        return STATE_RESETTING;
+    }
     if (awm.isConnected()) {
         return STATE_CONNECTED;
     }
@@ -60,6 +120,14 @@ void ledTask(void *pvParameters) {
             ring.show();
             connectFrame++;
             vTaskDelay(pdMS_TO_TICKS(70));
+        } else if (currentState == STATE_RESETTING) {
+            const bool on = (millis() / 150) % 2 == 0;
+            const uint32_t color = on ? ring.Color(180, 0, 0) : 0;
+            for (int i = 0; i < LED_COUNT; i++) {
+                ring.setPixelColor(i, color);
+            }
+            ring.show();
+            vTaskDelay(pdMS_TO_TICKS(30));
         } else {
             for (int i = 0; i < LED_COUNT; i++) ring.setPixelColor(i, ring.gamma32(ring.ColorHSV(hue + (i * 65536 / LED_COUNT))));
             ring.show();
@@ -76,11 +144,18 @@ void setup() {
 
     Wire.begin(I2C_SDA, I2C_SCL);
     delay(100); // Wait for I2C to stabilize
-    audioInit();
 
     if (!LittleFS.begin(true)) {
         Serial.println("LittleFS Mount Failed!");
     }
+
+    if (!ioExpanderInit()) {
+        Serial.println("I/O expander init failed.");
+    }
+    configureKey3Input();
+    xTaskCreatePinnedToCore(key3HoldTask, "KEY3_Task", 4096, NULL, 2, NULL, 1);
+
+    audioInit();
 
     awm.setHtmlPathPrefix("/wifimanager");
     awm.setAPCredentials("Zauberbox-Config", "789456123");
@@ -117,6 +192,8 @@ void loop() {
     if (!awm.isConnected()) {
         awm.reintentarConexionSiNecesario();
     }
-    currentState = computeSystemState();
+    if (currentState != STATE_RESETTING) {
+        currentState = computeSystemState();
+    }
     vTaskDelay(pdMS_TO_TICKS(10));
 }

@@ -2,14 +2,11 @@
 
 #include <Wire.h>
 #include "driver/i2s_std.h"
+#include "io_expander.h"
 
 namespace {
 
 constexpr uint8_t kEs8311Addr = 0x18;
-constexpr uint8_t kTca9555Addr = 0x20;
-constexpr uint8_t kTca9555RegOutputPort1 = 0x03;
-constexpr uint8_t kTca9555RegConfigPort1 = 0x07;
-constexpr uint8_t kTca9555PaEnableMask = 0x01;
 
 constexpr gpio_num_t kI2SMclk = GPIO_NUM_12;
 constexpr gpio_num_t kI2SBclk = GPIO_NUM_13;
@@ -88,24 +85,9 @@ bool initEs8311() {
 }
 
 bool enableSpeaker() {
-    uint8_t configPort1 = 0xFF;
-    uint8_t outputPort1 = 0x00;
-
-    if (!readRegister8(kTca9555Addr, kTca9555RegConfigPort1, &configPort1)) {
-        Serial.println("TCA9555 config read failed.");
-        return false;
-    }
-    if (!readRegister8(kTca9555Addr, kTca9555RegOutputPort1, &outputPort1)) {
-        Serial.println("TCA9555 output read failed.");
-        return false;
-    }
-
-    configPort1 &= ~kTca9555PaEnableMask;
-    outputPort1 |= kTca9555PaEnableMask;
-
-    if (!writeRegister8(kTca9555Addr, kTca9555RegConfigPort1, configPort1) ||
-        !writeRegister8(kTca9555Addr, kTca9555RegOutputPort1, outputPort1)) {
-        Serial.println("Speaker enable via TCA9555 failed.");
+    if (!ioExpanderPinMode(kIoExpanderSpeakerEnablePin, OUTPUT) ||
+        !ioExpanderDigitalWrite(kIoExpanderSpeakerEnablePin, HIGH)) {
+        Serial.println("Speaker enable via I/O expander failed.");
         return false;
     }
 
