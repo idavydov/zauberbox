@@ -17,6 +17,7 @@ number-mp3s = "zauberbox.number:main"
 combine-cards = "zauberbox.combine:main"
 mock-server = "zauberbox.web.mock_server:main"
 build-web = "zauberbox.web.build_web:main"
+build-ui-sounds = "zauberbox.build_ui_sounds:main"
 
 [build-system]
 requires = ["hatchling"]
