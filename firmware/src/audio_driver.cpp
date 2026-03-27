@@ -1,7 +1,10 @@
 #include "audio_driver.h"
 
+#include <Audio.h>
+#include <LittleFS.h>
 #include <Wire.h>
-#include "driver/i2s_std.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include "io_expander.h"
 
 namespace {
@@ -13,9 +16,15 @@ constexpr gpio_num_t kI2SBclk = GPIO_NUM_13;
 constexpr gpio_num_t kI2SWs = GPIO_NUM_14;
 constexpr gpio_num_t kI2SDout = GPIO_NUM_16;
 constexpr i2s_port_t kI2SPort = I2S_NUM_0;
-constexpr uint32_t kI2SSampleRate = 16000;
+constexpr char kBootSoundPath[] = "/boot.wav";
+constexpr char kWifiConnectedSoundPath[] = "/wifi_connected.wav";
+constexpr char kTestMp3Path[] = "/test.mp3";
+constexpr uint8_t kPlaybackVolume = 14;
+constexpr size_t kAudioQueueDepth = 6;
 
-i2s_chan_handle_t gTxHandle = nullptr;
+Audio gFilePlayer(kI2SPort);
+QueueHandle_t gAudioQueue = nullptr;
+TaskHandle_t gAudioServiceTask = nullptr;
 
 bool writeRegister8(uint8_t deviceAddr, uint8_t reg, uint8_t value) {
     Wire.beginTransmission(deviceAddr);
@@ -96,37 +105,50 @@ bool enableSpeaker() {
     return true;
 }
 
-bool initI2S() {
-    i2s_chan_config_t chanCfg = I2S_CHANNEL_DEFAULT_CONFIG(kI2SPort, I2S_ROLE_MASTER);
-    if (i2s_new_channel(&chanCfg, &gTxHandle, nullptr) != ESP_OK) {
-        Serial.println("I2S channel creation failed.");
-        gTxHandle = nullptr;
+bool configurePlayer() {
+    if (!gFilePlayer.setPinout(kI2SBclk, kI2SWs, kI2SDout, kI2SMclk)) {
+        Serial.println("Audio player I2S pin configuration failed.");
         return false;
     }
-
-    i2s_std_config_t stdCfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(kI2SSampleRate),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
-        .gpio_cfg = {
-            .mclk = kI2SMclk,
-            .bclk = kI2SBclk,
-            .ws = kI2SWs,
-            .dout = kI2SDout,
-            .din = I2S_GPIO_UNUSED,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv = false,
-            },
-        },
-    };
-
-    if (i2s_channel_init_std_mode(gTxHandle, &stdCfg) != ESP_OK) {
-        Serial.println("I2S std mode init failed.");
-        return false;
-    }
-
+    gFilePlayer.setVolume(kPlaybackVolume);
     return true;
+}
+
+bool playFile(const char *path) {
+    if (!LittleFS.exists(path)) {
+        Serial.printf("Audio file not found: %s\n", path);
+        return false;
+    }
+    if (gFilePlayer.isRunning()) {
+        gFilePlayer.stopSong();
+    }
+    if (!gFilePlayer.connecttoFS(LittleFS, path)) {
+        Serial.printf("Audio playback start failed: %s\n", path);
+        return false;
+    }
+
+    Serial.printf("Playing audio: %s\n", path);
+    return true;
+}
+
+bool enqueuePath(const char *path) {
+    if (!gAudioQueue) {
+        return false;
+    }
+    return xQueueSend(gAudioQueue, &path, 0) == pdPASS;
+}
+
+void audioServiceTask(void *pvParameters) {
+    const char *path = nullptr;
+
+    while (true) {
+        if (xQueueReceive(gAudioQueue, &path, pdMS_TO_TICKS(1)) == pdPASS) {
+            playFile(path);
+        }
+        if (gFilePlayer.isRunning()) {
+            gFilePlayer.loop();
+        }
+    }
 }
 
 } // namespace
@@ -138,53 +160,30 @@ bool audioInit() {
     if (!initEs8311()) {
         return false;
     }
-    return initI2S();
+    if (!configurePlayer()) {
+        return false;
+    }
+    if (!gAudioQueue) {
+        gAudioQueue = xQueueCreate(kAudioQueueDepth, sizeof(const char *));
+        if (!gAudioQueue) {
+            Serial.println("Audio queue creation failed.");
+            return false;
+        }
+    }
+    if (!gAudioServiceTask) {
+        xTaskCreatePinnedToCore(audioServiceTask, "Audio_Service", 8192, nullptr, 2, &gAudioServiceTask, 0);
+    }
+    return true;
 }
 
-void audioPlayBip(float frequency, int durationMs, int16_t amplitude) {
-    if (!gTxHandle) {
-        return;
-    }
+bool audioPlayBootSound() {
+    return enqueuePath(kBootSoundPath);
+}
 
-    size_t bytesWritten;
-    int samples = (kI2SSampleRate * durationMs) / 1000;
-    int silenceSamples = kI2SSampleRate / 50;
-    int totalSamples = samples + silenceSamples;
-    int16_t *buf = (int16_t *)calloc(totalSamples * 2, sizeof(int16_t));
-    if (!buf) {
-        Serial.println("Audio buffer allocation failed.");
-        return;
-    }
+bool audioPlayWifiConnectedSound() {
+    return enqueuePath(kWifiConnectedSoundPath);
+}
 
-    i2s_channel_enable(gTxHandle);
-    delay(12);
-
-    int fadeSamples = samples / 4;
-    const int maxFadeSamples = kI2SSampleRate / 200;
-    if (fadeSamples > maxFadeSamples) {
-        fadeSamples = maxFadeSamples;
-    }
-    if (fadeSamples < 1) {
-        fadeSamples = 1;
-    }
-
-    for (int i = 0; i < samples; i++) {
-        float envelope = 1.0f;
-        if (i < fadeSamples) {
-            envelope = (float)i / fadeSamples;
-        } else if (i >= samples - fadeSamples) {
-            envelope = (float)(samples - 1 - i) / fadeSamples;
-        }
-        float wave = sinf(2.0f * PI * frequency * i / kI2SSampleRate);
-        int16_t val = (int16_t)(wave * amplitude * envelope);
-        buf[i * 2] = val;
-        buf[i * 2 + 1] = val;
-    }
-
-    i2s_channel_write(gTxHandle, buf, totalSamples * 2 * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
-    free(buf);
-
-    int playbackMs = (totalSamples * 1000) / kI2SSampleRate;
-    delay(playbackMs + 10);
-    i2s_channel_disable(gTxHandle);
+bool audioPlayTestMp3() {
+    return enqueuePath(kTestMp3Path);
 }

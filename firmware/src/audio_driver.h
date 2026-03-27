@@ -3,4 +3,6 @@
 #include <Arduino.h>
 
 bool audioInit();
-void audioPlayBip(float frequency, int durationMs, int16_t amplitude = 4000);
+bool audioPlayBootSound();
+bool audioPlayWifiConnectedSound();
+bool audioPlayTestMp3();

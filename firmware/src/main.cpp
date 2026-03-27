@@ -14,6 +14,8 @@
 #define LED_COUNT 7
 
 constexpr uint32_t kKeyHoldMs = 3000;
+constexpr uint32_t kKeyDebounceMs = 60;
+constexpr uint32_t kBootSoundDelayMs = 900;
 // States for LED Task
 enum SystemState {
     STATE_WAITING_AP,
@@ -32,9 +34,23 @@ void configureKey1Input() {
     }
 }
 
+void configureKey3Input() {
+    if (!ioExpanderPinMode(kIoExpanderKey3Pin, INPUT)) {
+        Serial.println("KEY3 config failed.");
+    }
+}
+
 bool isKey1Pressed() {
     bool levelHigh = true;
     if (!ioExpanderDigitalRead(kIoExpanderKey1Pin, &levelHigh)) {
+        return false;
+    }
+    return !levelHigh;
+}
+
+bool isKey3Pressed() {
+    bool levelHigh = true;
+    if (!ioExpanderDigitalRead(kIoExpanderKey3Pin, &levelHigh)) {
         return false;
     }
     return !levelHigh;
@@ -77,6 +93,37 @@ void key1HoldTask(void *pvParameters) {
 
         vTaskDelay(pdMS_TO_TICKS(50));
     }
+}
+
+void key3PressTask(void *pvParameters) {
+    uint32_t pressedAt = 0;
+
+    while (true) {
+        if (currentState == STATE_RESETTING) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        if (isKey3Pressed()) {
+            if (pressedAt == 0) {
+                pressedAt = millis();
+            }
+        } else if (pressedAt != 0) {
+            const uint32_t heldMs = millis() - pressedAt;
+            pressedAt = 0;
+            if (heldMs >= kKeyDebounceMs && heldMs < kKeyHoldMs) {
+                audioPlayTestMp3();
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+void bootSoundTask(void *pvParameters) {
+    vTaskDelay(pdMS_TO_TICKS(kBootSoundDelayMs));
+    audioPlayBootSound();
+    vTaskDelete(nullptr);
 }
 
 SystemState computeSystemState() {
@@ -153,7 +200,9 @@ void setup() {
         Serial.println("I/O expander init failed.");
     }
     configureKey1Input();
+    configureKey3Input();
     xTaskCreatePinnedToCore(key1HoldTask, "KEY1_Task", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(key3PressTask, "KEY3_Task", 4096, NULL, 2, NULL, 1);
 
     audioInit();
 
@@ -169,8 +218,7 @@ void setup() {
     ring.setBrightness(50);
     xTaskCreatePinnedToCore(ledTask, "LED_Task", 4096, NULL, 1, NULL, 1);
 
-    delay(80);
-    audioPlayBip(880, 45, 1800);
+    xTaskCreatePinnedToCore(bootSoundTask, "BootSound_Task", 2048, NULL, 1, NULL, 1);
 
     Serial.println("Starting WiFi Config...");
     // run() will try to connect or start the portal based on policy
@@ -180,9 +228,7 @@ void setup() {
     if (awm.isConnected()) {
         currentState = STATE_CONNECTED;
         Serial.println("WiFi Connected!");
-        audioPlayBip(2000, 35, 1400);
-        delay(35);
-        audioPlayBip(2500, 50, 1400);
+        audioPlayWifiConnectedSound();
     }
 }
 
