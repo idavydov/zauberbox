@@ -26,15 +26,15 @@ volatile SystemState currentState = STATE_WAITING_AP;
 Adafruit_NeoPixel ring(LED_COUNT, LED_PIN, NEO_RGB + NEO_KHZ800);
 AyresWiFiManager awm;
 
-void configureKey3Input() {
-    if (!ioExpanderPinMode(kIoExpanderKey3Pin, INPUT)) {
-        Serial.println("KEY3 config failed.");
+void configureKey1Input() {
+    if (!ioExpanderPinMode(kIoExpanderKey1Pin, INPUT)) {
+        Serial.println("KEY1 config failed.");
     }
 }
 
-bool isKey3Pressed() {
+bool isKey1Pressed() {
     bool levelHigh = true;
-    if (!ioExpanderDigitalRead(kIoExpanderKey3Pin, &levelHigh)) {
+    if (!ioExpanderDigitalRead(kIoExpanderKey1Pin, &levelHigh)) {
         return false;
     }
     return !levelHigh;
@@ -43,7 +43,7 @@ bool isKey3Pressed() {
 [[noreturn]] void eraseWifiCredentialsAndReboot() {
     currentState = STATE_RESETTING;
     const bool removed = LittleFS.remove("/wifi.json");
-    Serial.printf("KEY3 long press: %s /wifi.json\n", removed ? "removed" : "could not remove");
+    Serial.printf("KEY1 long press: %s /wifi.json\n", removed ? "removed" : "could not remove");
 
     const uint32_t rebootAt = millis() + 3000;
     while (millis() < rebootAt) {
@@ -56,7 +56,7 @@ bool isKey3Pressed() {
     }
 }
 
-void key3HoldTask(void *pvParameters) {
+void key1HoldTask(void *pvParameters) {
     uint32_t pressedAt = 0;
 
     while (true) {
@@ -65,7 +65,7 @@ void key3HoldTask(void *pvParameters) {
             continue;
         }
 
-        if (isKey3Pressed()) {
+        if (isKey1Pressed()) {
             if (pressedAt == 0) {
                 pressedAt = millis();
             } else if (millis() - pressedAt >= kKeyHoldMs) {
@@ -152,8 +152,8 @@ void setup() {
     if (!ioExpanderInit()) {
         Serial.println("I/O expander init failed.");
     }
-    configureKey3Input();
-    xTaskCreatePinnedToCore(key3HoldTask, "KEY3_Task", 4096, NULL, 2, NULL, 1);
+    configureKey1Input();
+    xTaskCreatePinnedToCore(key1HoldTask, "KEY1_Task", 4096, NULL, 2, NULL, 1);
 
     audioInit();
 
