@@ -19,7 +19,7 @@ enum SystemState {
 };
 
 volatile SystemState currentState = STATE_WAITING_AP;
-Adafruit_NeoPixel ring(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel ring(LED_COUNT, LED_PIN, NEO_RGB + NEO_KHZ800);
 AyresWiFiManager awm;
 
 SystemState computeSystemState() {
@@ -39,7 +39,7 @@ void ledTask(void *pvParameters) {
         if (currentState == STATE_WAITING_AP) {
             float breath = (exp(sin(millis() / 500.0 * PI)) - 0.36787944) * 108.0;
             for (int i = 0; i < LED_COUNT; i++) {
-                ring.setPixelColor(i, ring.Color(breath, breath * 0.15, 0));
+                ring.setPixelColor(i, ring.Color(0, breath, breath * 0.15));
             }
             ring.show();
             vTaskDelay(pdMS_TO_TICKS(10));
