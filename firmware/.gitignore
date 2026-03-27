@@ -6,6 +6,9 @@
 *.bin
 *.map
 
+# generated
+data/app.html
+
 # ESP-IDF
 sdkconfig
 sdkconfig.old
