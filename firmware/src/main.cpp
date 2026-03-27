@@ -58,7 +58,8 @@ void setup() {
         Serial.println("LittleFS Mount Failed!");
     }
 
-    awm.setAPCredentials("Zauberbox-Config", "123456789");
+    awm.setHtmlPathPrefix("/wifimanager");
+    awm.setAPCredentials("Zauberbox-Config", "789456123");
     awm.begin();
 
     Serial.println("Starting WiFi Config...");

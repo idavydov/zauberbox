@@ -18,8 +18,7 @@ def build():
     qr_path = os.path.join(web_src_dir, "qrcode.min.js")
     
     # Use app.html to avoid collision with WiFiManager's index.html
-    output_path = os.path.join(dist_dir, "app.html")
-    output_gz_path = output_path + ".gz"
+    output_path = os.path.join(dist_dir, "index.html")
 
     os.makedirs(dist_dir, exist_ok=True)
 
@@ -62,12 +61,7 @@ def build():
     with open(output_path, "w") as f:
         f.write(minified)
 
-    # Gzip
-    with gzip.open(output_gz_path, "wb") as f:
-        f.write(minified.encode("utf-8"))
-
     print(f"Build complete: {output_path} ({len(minified)} bytes)")
-    print(f"Compressed: {output_gz_path} ({os.path.getsize(output_gz_path)} bytes)")
 
 def main():
     build()

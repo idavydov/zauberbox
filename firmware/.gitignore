@@ -7,7 +7,7 @@
 *.map
 
 # generated
-data/app.html
+data/index.html
 
 # ESP-IDF
 sdkconfig
