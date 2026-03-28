@@ -7,49 +7,29 @@
 namespace {
 
 constexpr uint32_t kKeyHoldMs = 3000;
+constexpr uint32_t kPollIntervalMs = 50;
 
 } // namespace
 
 void ButtonController::begin() {
     configureKey1Input();
-
-    if (!resetTaskHandle_) {
-        xTaskCreatePinnedToCore(resetTaskEntry,
-                                "KEY1_Task",
-                                4096,
-                                this,
-                                2,
-                                &resetTaskHandle_,
-                                1);
-    }
 }
 
-void ButtonController::resetTaskEntry(void *context) {
-    static_cast<ButtonController *>(context)->runResetTask();
-}
-
-void ButtonController::runResetTask() {
-    uint32_t pressedAt = 0;
-
-    while (true) {
-        if (!appStateStore().allowsFactoryReset()) {
-            pressedAt = 0;
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
-
-        if (isKey1Pressed()) {
-            if (pressedAt == 0) {
-                pressedAt = millis();
-            } else if (millis() - pressedAt >= kKeyHoldMs) {
-                eraseWifiCredentialsAndReboot();
-            }
-        } else {
-            pressedAt = 0;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(50));
+bool ButtonController::waitForFactoryResetRequest(uint32_t holdMs) const {
+    const uint32_t requiredHoldMs = holdMs == 0 ? kKeyHoldMs : holdMs;
+    if (!appStateStore().allowsFactoryReset() || !isKey1Pressed()) {
+        return false;
     }
+
+    const uint32_t pressedAt = millis();
+    while (isKey1Pressed()) {
+        if (millis() - pressedAt >= requiredHoldMs) {
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(kPollIntervalMs));
+    }
+
+    return false;
 }
 
 void ButtonController::configureKey1Input() const {
@@ -66,7 +46,7 @@ bool ButtonController::isKey1Pressed() const {
     return !levelHigh;
 }
 
-[[noreturn]] void ButtonController::eraseWifiCredentialsAndReboot() const {
+[[noreturn]] void ButtonController::factoryResetAndReboot() const {
     appStateStore().requestFactoryReset();
     const FactoryResetReport report = configService().eraseFactoryData();
     Serial.printf("Factory reset: removed=%u missing=%u failed=%u\n",

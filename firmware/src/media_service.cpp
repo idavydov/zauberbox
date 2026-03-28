@@ -36,7 +36,7 @@ MediaService *MediaService::activeInstance_ = nullptr;
 bool MediaService::begin() {
     activeInstance_ = this;
     audioSetPlaybackFinishedCallback(handlePlaybackFinishedStatic);
-    return mountStorage();
+    return true;
 }
 
 void MediaService::update() {

@@ -6,17 +6,22 @@
 namespace {
 
 constexpr uint32_t kBootSoundDelayMs = 900;
+constexpr uint32_t kFactoryResetHoldMs = 3000;
 
 } // namespace
 
 void AppController::begin() {
     appStateStore().init();
     configService().begin();
-    (void)mediaService_.begin();
 
     buttonController_.begin();
     ledController_.begin();
-    wifiService_.begin([this]() { mediaService_.playWifiConnectedSound(); });
+
+    if (buttonController_.waitForFactoryResetRequest(kFactoryResetHoldMs)) {
+        buttonController_.factoryResetAndReboot();
+    }
+
+    (void)mediaService_.begin();
 
     if (!bootSoundTaskHandle_) {
         xTaskCreatePinnedToCore(bootSoundTaskEntry,
@@ -29,14 +34,10 @@ void AppController::begin() {
     }
 
     appStateStore().completeBoot();
-
-    Serial.println("Starting WiFi Config...");
-    wifiService_.runStartup();
 }
 
 void AppController::update() {
     mediaService_.update();
-    wifiService_.update();
 }
 
 void AppController::bootSoundTaskEntry(void *context) {
