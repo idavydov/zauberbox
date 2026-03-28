@@ -34,6 +34,15 @@ def _silence(duration_ms: int) -> list[int]:
     return [0] * int(SAMPLE_RATE * duration_ms / 1000)
 
 
+def _sequence(segments: list[tuple[float, int, float, int]]) -> list[int]:
+    pcm: list[int] = []
+    for freq_hz, duration_ms, amplitude, pause_ms in segments:
+        pcm.extend(_tone(freq_hz, duration_ms, amplitude=amplitude))
+        if pause_ms > 0:
+            pcm.extend(_silence(pause_ms))
+    return pcm
+
+
 def _write_wav(path: Path, pcm: list[int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as wav_file:
@@ -44,12 +53,42 @@ def _write_wav(path: Path, pcm: list[int]) -> None:
 
 
 def build_ui_sounds(output_dir: Path) -> None:
-    boot = _tone(880.0, 45, amplitude=0.055)
-    wifi_connected = _tone(2000.0, 35, amplitude=0.045) + _silence(35) + _tone(2500.0, 50, amplitude=0.045)
+    boot = _sequence(
+        [
+            (880.0, 60, 0.06, 25),
+            (1175.0, 70, 0.055, 0),
+        ]
+    )
+    sleep = _sequence(
+        [
+            (740.0, 70, 0.045, 20),
+            (587.0, 90, 0.04, 0),
+        ]
+    )
+    error = _sequence(
+        [
+            (330.0, 90, 0.055, 45),
+            (330.0, 120, 0.055, 0),
+        ]
+    )
+    wifi_connected = _sequence(
+        [
+            (2000.0, 35, 0.045, 35),
+            (2500.0, 50, 0.045, 0),
+        ]
+    )
+    button = _sequence(
+        [
+            (1300.0, 22, 0.03, 0),
+        ]
+    )
 
     files = {
         "boot.wav": boot,
+        "sleep.wav": sleep,
+        "error.wav": error,
         "wifi_connected.wav": wifi_connected,
+        "button.wav": button,
     }
 
     for name, pcm in files.items():
