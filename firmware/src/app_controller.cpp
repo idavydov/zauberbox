@@ -25,7 +25,7 @@ void AppController::begin() {
 
     (void)mediaService_.begin();
     (void)qrService_.begin([this](const String &albumId) {
-        handleQrAlbumScanned(albumId);
+        return handleQrAlbumScanned(albumId);
     });
 
     if (!bootSoundTaskHandle_) {
@@ -87,10 +87,10 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
     }
 }
 
-void AppController::handleQrAlbumScanned(const String &albumId) {
+bool AppController::handleQrAlbumScanned(const String &albumId) {
     if (albumId.isEmpty()) {
-        return;
+        return false;
     }
 
-    (void)mediaService_.playAlbum(albumId.c_str());
+    return mediaService_.playAlbum(albumId.c_str());
 }

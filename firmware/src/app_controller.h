@@ -16,7 +16,7 @@ class AppController {
     static void bootSoundTaskEntry(void *context);
     void runBootSoundTask();
     void handleButtonEvent(const ButtonEvent &event);
-    void handleQrAlbumScanned(const String &albumId);
+    bool handleQrAlbumScanned(const String &albumId);
 
     ButtonController buttonController_;
     LedController ledController_;

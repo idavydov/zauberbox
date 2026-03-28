@@ -26,6 +26,8 @@ constexpr int kCameraPinHref = 1;
 constexpr int kCameraPinPclk = 44;
 constexpr uint32_t kCameraRetryDelayMs = 1000;
 constexpr BaseType_t kQrDecodeCore = 1;
+constexpr uint32_t kQrScanTimeoutMs = 30000;
+constexpr uint32_t kDuplicatePayloadWindowMs = 1500;
 
 CameraPins makeCameraPins() {
     return {
@@ -73,12 +75,22 @@ void QrService::update() {
     }
 
     const AppState state = appStateStore().current();
+    if (state != lastObservedState_) {
+        handleStateTransition(state);
+        lastObservedState_ = state;
+    }
+
     if (state == AppState::QrScan) {
         if (!scanning_ && millis() >= nextStartAttemptAtMs_) {
             (void)startScanning();
         }
         if (scanning_) {
             pollDecodedQrs();
+            if (lastQrActivityAtMs_ != 0 &&
+                millis() - lastQrActivityAtMs_ >= kQrScanTimeoutMs) {
+                Serial.println("QR service: scan timeout reached, entering Idle.");
+                appStateStore().transitionTo(AppState::Idle);
+            }
         }
         return;
     }
@@ -94,6 +106,18 @@ bool QrService::submitDecodedPayload(const char *payload) {
         return false;
     }
 
+    recordDecodedActivity();
+
+    const String payloadString = payload ? String(payload) : String();
+    if (isDuplicatePayload(payloadString)) {
+        Serial.printf("QR service: suppressed duplicate payload: %s\n",
+                      payload ? payload : "(null)");
+        return false;
+    }
+
+    lastDecodedPayload_ = payloadString;
+    lastDecodedPayloadAtMs_ = millis();
+
     String albumId;
     if (!parseAlbumId(payload, &albumId)) {
         Serial.printf("QR service: ignored unsupported payload: %s\n",
@@ -103,9 +127,9 @@ bool QrService::submitDecodedPayload(const char *payload) {
 
     Serial.printf("QR service: decoded album payload: %s\n", albumId.c_str());
     if (onAlbumScanned_) {
-        onAlbumScanned_(albumId);
+        return onAlbumScanned_(albumId);
     }
-    return true;
+    return false;
 }
 
 bool QrService::isCameraReady() const {
@@ -128,8 +152,44 @@ void QrService::pollDecodedQrs() {
             continue;
         }
 
-        (void)submitDecodedPayload(reinterpret_cast<const char *>(qrCodeData.payload));
+        if (submitDecodedPayload(reinterpret_cast<const char *>(qrCodeData.payload))) {
+            return;
+        }
     }
+}
+
+void QrService::handleStateTransition(AppState state) {
+    if (state == AppState::QrScan) {
+        startScanSession();
+        return;
+    }
+
+    stopScanSession();
+}
+
+void QrService::startScanSession() {
+    lastQrActivityAtMs_ = millis();
+    lastDecodedPayload_ = "";
+    lastDecodedPayloadAtMs_ = 0;
+}
+
+void QrService::stopScanSession() {
+    lastQrActivityAtMs_ = 0;
+    lastDecodedPayload_ = "";
+    lastDecodedPayloadAtMs_ = 0;
+}
+
+void QrService::recordDecodedActivity() {
+    lastQrActivityAtMs_ = millis();
+}
+
+bool QrService::isDuplicatePayload(const String &payload) const {
+    if (payload.isEmpty() || lastDecodedPayload_.isEmpty()) {
+        return false;
+    }
+
+    return payload == lastDecodedPayload_ &&
+           millis() - lastDecodedPayloadAtMs_ < kDuplicatePayloadWindowMs;
 }
 
 bool QrService::parseAlbumId(const char *payload, String *albumId) {

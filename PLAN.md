@@ -301,14 +301,16 @@ Work:
 - done: add a first decode backend using vendored `quirc` via
   `ESP32QRCodeReader`
 - continue defining scan session lifecycle:
-  - start scanning
+  - done: start scanning
   - done: decode candidate
   - done: validate payload
   - done: hand off album ID to media playback
-  - ignore duplicates or restart same album intentionally
-- connect scan timeout to `Idle`
-- make `Idle` the state where camera activity stops while the rest of the
+- done: suppress duplicate payload bursts within one scan session
+- done: connect scan timeout to `Idle`
+- done: make `Idle` the state where camera activity stops while the rest of the
   system remains available
+- define the intentional re-scan/restart policy once there is an explicit path
+  back from `Idle` to `QR Scan`
 
 Definition of done:
 
