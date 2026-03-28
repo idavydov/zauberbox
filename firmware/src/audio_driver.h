@@ -5,4 +5,3 @@
 bool audioInit();
 bool audioPlayBootSound();
 bool audioPlayWifiConnectedSound();
-bool audioPlayTestMp3();

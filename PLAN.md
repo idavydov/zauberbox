@@ -10,11 +10,11 @@ The current codebase is still a bring-up style application:
   [`io_expander.cpp`](./firmware/src/io_expander.cpp)
 - there is no SD-card media engine yet
 - there is no QR scanner/camera pipeline yet
-- there is no explicit state machine yet
+- a canonical app-state store now exists, but the broader controller split is
+  still not done
 - Wi-Fi provisioning exists, but the normal app server described in the spec
   does not
-- button behavior is still diagnostic-oriented in places, for example `KEY3`
-  plays `test.mp3`
+- button behavior is still incomplete relative to the product spec
 
 The goal should be a gradual transition from bring-up code to a small set of
 explicit services with a state-driven application layer.
@@ -25,7 +25,20 @@ These are the changes I would do before adding major new features.
 
 ### 1. Introduce a real application state model
 
-Current issue:
+Status:
+
+- completed as the first architectural step
+- the firmware now has a canonical `AppState` model plus a separate `WifiMode`
+  overlay, wrapped in a dedicated state-store class
+- LED behavior, factory-reset gating, and Wi-Fi synchronization now consume
+  that model instead of the old LED-only enum
+
+Remaining gap:
+
+- buttons, media behavior, and camera behavior are not fully state-driven yet,
+  because the corresponding services do not exist yet
+
+Previous issue:
 
 - [`main.cpp`](./firmware/src/main.cpp) uses a small LED-oriented enum
   (`STATE_WAITING_AP`, `STATE_CONNECTING_WIFI`, `STATE_CONNECTED`,
@@ -135,8 +148,8 @@ Goal:
 
 Work:
 
-- introduce a canonical app state enum and transition rules
-- introduce a separate Wi-Fi mode model:
+- done: introduce a canonical app state enum and transition rules
+- done: introduce a separate Wi-Fi mode model:
   - disabled
   - enabling/connecting
   - connected
@@ -175,7 +188,7 @@ Work:
 
 Definition of done:
 
-- playback is no longer tied to `test.mp3`
+- playback is no longer tied to any bring-up-only file
 - the firmware can play an album from the SD card deterministically
 
 ## Phase 3: Replace Diagnostic Button Behavior With Product Behavior
@@ -186,7 +199,7 @@ Goal:
 
 Work:
 
-- remove `KEY3 -> test.mp3` from normal runtime
+- done: remove `KEY3 -> test.mp3` from normal runtime
 - implement per-state button mappings:
   - volume down/up
   - play/pause
@@ -334,7 +347,6 @@ Recommendation:
 
 Examples:
 
-- `KEY3` playing `test.mp3`
 - boot-time diagnostic sounds used as readiness checks
 - direct file removal for reset
 
@@ -354,10 +366,10 @@ Recommendation:
 
 If only one milestone should be tackled next, I would do this:
 
-1. Introduce a canonical app state model.
-2. Split `main.cpp` into app/button/LED/Wi-Fi modules.
-3. Add a config service and proper factory-reset ownership.
-4. Add an SD-backed media service.
+1. Split `main.cpp` into app/button/LED/Wi-Fi modules.
+2. Add a config service and proper factory-reset ownership.
+3. Add an SD-backed media service.
+4. Implement the product button policy on top of that media model.
 
 After that, the rest of the specification becomes much easier to implement
 incrementally instead of by repeated rewrites.

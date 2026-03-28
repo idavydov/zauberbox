@@ -18,7 +18,6 @@ constexpr gpio_num_t kI2SDout = GPIO_NUM_16;
 constexpr i2s_port_t kI2SPort = I2S_NUM_0;
 constexpr char kBootSoundPath[] = "/boot.wav";
 constexpr char kWifiConnectedSoundPath[] = "/wifi_connected.wav";
-constexpr char kTestMp3Path[] = "/test.mp3";
 constexpr uint8_t kPlaybackVolume = 14;
 constexpr size_t kAudioQueueDepth = 6;
 
@@ -182,8 +181,4 @@ bool audioPlayBootSound() {
 
 bool audioPlayWifiConnectedSound() {
     return enqueuePath(kWifiConnectedSoundPath);
-}
-
-bool audioPlayTestMp3() {
-    return enqueuePath(kTestMp3Path);
 }
