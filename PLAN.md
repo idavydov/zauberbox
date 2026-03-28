@@ -5,13 +5,19 @@ This plan is based on the current firmware state and the current
 
 The current codebase is still a bring-up style application:
 
-- only three firmware modules exist: [`main.cpp`](./firmware/src/main.cpp),
+- a first controller split now exists:
+  [`main.cpp`](./firmware/src/main.cpp),
+  [`app_controller.cpp`](./firmware/src/app_controller.cpp),
+  [`app_state.cpp`](./firmware/src/app_state.cpp),
+  [`button_controller.cpp`](./firmware/src/button_controller.cpp),
+  [`led_controller.cpp`](./firmware/src/led_controller.cpp),
+  [`wifi_service.cpp`](./firmware/src/wifi_service.cpp),
   [`audio_driver.cpp`](./firmware/src/audio_driver.cpp), and
   [`io_expander.cpp`](./firmware/src/io_expander.cpp)
 - there is no SD-card media engine yet
 - there is no QR scanner/camera pipeline yet
-- a canonical app-state store now exists, but the broader controller split is
-  still not done
+- a canonical app-state store now exists, and `main.cpp` is now effectively
+  bootstrap/composition only
 - Wi-Fi provisioning exists, but the normal app server described in the spec
   does not
 - button behavior is still incomplete relative to the product spec
@@ -66,7 +72,21 @@ Why first:
 
 ### 2. Split `main.cpp` into small controllers
 
-Current issue:
+Status:
+
+- mostly completed for the current runtime scope
+- `app_controller` now owns the remaining boot/app orchestration that used to
+  live in `main.cpp`
+- `button_controller`, `led_controller`, and `wifi_service` now exist and own
+  their respective tasks/integration points
+- `main.cpp` is now effectively composition/bootstrap only
+
+Remaining gap:
+
+- there is no product button-policy controller yet
+- media and QR services still do not exist
+
+Previous issue:
 
 - `main.cpp` currently owns boot flow, button tasks, reset logic, LED
   animation, Wi-Fi-manager orchestration, and some audio triggering
@@ -154,10 +174,11 @@ Work:
   - enabling/connecting
   - connected
   - portal active
-- extract `button_controller`
-- extract `led_controller`
-- extract `wifi_service`
-- make `main.cpp` boot and wire services only
+- done: extract `button_controller`
+- done: extract `led_controller`
+- done: extract `wifi_service`
+- done: move remaining boot/app orchestration out of `main.cpp`
+- done: make `main.cpp` composition and bootstrap only
 
 Definition of done:
 
@@ -366,10 +387,10 @@ Recommendation:
 
 If only one milestone should be tackled next, I would do this:
 
-1. Split `main.cpp` into app/button/LED/Wi-Fi modules.
-2. Add a config service and proper factory-reset ownership.
-3. Add an SD-backed media service.
-4. Implement the product button policy on top of that media model.
+1. Add a config service and proper factory-reset ownership.
+2. Add an SD-backed media service.
+3. Implement the product button policy on top of that media model.
+4. Add the QR scan pipeline on top of that state/media structure.
 
 After that, the rest of the specification becomes much easier to implement
 incrementally instead of by repeated rewrites.
