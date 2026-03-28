@@ -7,6 +7,7 @@
 
 #include "app_state.h"
 #include "audio_driver.h"
+#include "io_expander.h"
 
 namespace {
 
@@ -17,6 +18,9 @@ constexpr char kSleepSoundPath[] = "/sleep.wav";
 constexpr char kButtonSoundPath[] = "/button.wav";
 constexpr char kSdMountPath[] = "/sdcard";
 constexpr uint32_t kPreviousTrackThresholdSeconds = 3;
+constexpr int kSdClkPin = 40;
+constexpr int kSdCmdPin = 42;
+constexpr int kSdD0Pin = 41;
 
 bool endsWithIgnoreCase(const String &value, const char *suffix) {
     const size_t valueLength = value.length();
@@ -224,7 +228,22 @@ bool MediaService::mountStorage() {
         return true;
     }
 
-    if (!SD_MMC.begin(kSdMountPath, true)) {
+    if (!ioExpanderPinMode(kIoExpanderSdCardAuxPin, OUTPUT)) {
+        Serial.println("Media service: SD card EXIO setup failed.");
+        return false;
+    }
+    if (!ioExpanderDigitalWrite(kIoExpanderSdCardAuxPin, HIGH)) {
+        Serial.println("Media service: failed to enable SD card EXIO line.");
+        return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    if (!SD_MMC.setPins(kSdClkPin, kSdCmdPin, kSdD0Pin, -1, -1, -1)) {
+        Serial.println("Media service: SD_MMC pin configuration failed.");
+        return false;
+    }
+
+    if (!SD_MMC.begin(kSdMountPath, true, true)) {
         Serial.println("Media service: SD card mount failed.");
         return false;
     }

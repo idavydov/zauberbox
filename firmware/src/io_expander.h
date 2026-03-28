@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 constexpr uint8_t kIoExpanderSpeakerEnablePin = 8;
+constexpr uint8_t kIoExpanderSdCardAuxPin = 3;
 constexpr uint8_t kIoExpanderKey1Pin = 9;
 constexpr uint8_t kIoExpanderKey2Pin = 10;
 constexpr uint8_t kIoExpanderKey3Pin = 11;
