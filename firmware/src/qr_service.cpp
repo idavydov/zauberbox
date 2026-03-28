@@ -4,6 +4,7 @@
 
 #include "app_state.h"
 #include "io_expander.h"
+#include "qr_reader/ESP32QRCodeReader.h"
 
 namespace {
 
@@ -23,38 +24,28 @@ constexpr int kCameraPinD0 = 2;
 constexpr int kCameraPinVsync = 21;
 constexpr int kCameraPinHref = 1;
 constexpr int kCameraPinPclk = 44;
-constexpr int kCameraI2cPort = 0;
 constexpr uint32_t kCameraRetryDelayMs = 1000;
+constexpr BaseType_t kQrDecodeCore = 1;
 
-camera_config_t makeCameraConfig() {
-    camera_config_t config = {};
-    config.pin_pwdn = kCameraPinPwdn;
-    config.pin_reset = kCameraPinReset;
-    config.pin_xclk = kCameraPinXclk;
-    config.pin_sccb_sda = kCameraPinSccbSda;
-    config.pin_sccb_scl = kCameraPinSccbScl;
-    config.pin_d7 = kCameraPinD7;
-    config.pin_d6 = kCameraPinD6;
-    config.pin_d5 = kCameraPinD5;
-    config.pin_d4 = kCameraPinD4;
-    config.pin_d3 = kCameraPinD3;
-    config.pin_d2 = kCameraPinD2;
-    config.pin_d1 = kCameraPinD1;
-    config.pin_d0 = kCameraPinD0;
-    config.pin_vsync = kCameraPinVsync;
-    config.pin_href = kCameraPinHref;
-    config.pin_pclk = kCameraPinPclk;
-    config.xclk_freq_hz = 20000000;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.pixel_format = PIXFORMAT_GRAYSCALE;
-    config.frame_size = FRAMESIZE_QVGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-    config.fb_location = CAMERA_FB_IN_PSRAM;
-    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-    config.sccb_i2c_port = kCameraI2cPort;
-    return config;
+CameraPins makeCameraPins() {
+    return {
+        .PWDN_GPIO_NUM = kCameraPinPwdn,
+        .RESET_GPIO_NUM = kCameraPinReset,
+        .XCLK_GPIO_NUM = kCameraPinXclk,
+        .SIOD_GPIO_NUM = kCameraPinSccbSda,
+        .SIOC_GPIO_NUM = kCameraPinSccbScl,
+        .Y9_GPIO_NUM = kCameraPinD7,
+        .Y8_GPIO_NUM = kCameraPinD6,
+        .Y7_GPIO_NUM = kCameraPinD5,
+        .Y6_GPIO_NUM = kCameraPinD4,
+        .Y5_GPIO_NUM = kCameraPinD3,
+        .Y4_GPIO_NUM = kCameraPinD2,
+        .Y3_GPIO_NUM = kCameraPinD1,
+        .Y2_GPIO_NUM = kCameraPinD0,
+        .VSYNC_GPIO_NUM = kCameraPinVsync,
+        .HREF_GPIO_NUM = kCameraPinHref,
+        .PCLK_GPIO_NUM = kCameraPinPclk,
+    };
 }
 
 } // namespace
@@ -85,6 +76,9 @@ void QrService::update() {
     if (state == AppState::QrScan) {
         if (!scanning_ && millis() >= nextStartAttemptAtMs_) {
             (void)startScanning();
+        }
+        if (scanning_) {
+            pollDecodedQrs();
         }
         return;
     }
@@ -120,6 +114,22 @@ bool QrService::isCameraReady() const {
 
 bool QrService::isScanning() const {
     return scanning_;
+}
+
+void QrService::pollDecodedQrs() {
+    if (!reader_) {
+        return;
+    }
+
+    QRCodeData qrCodeData = {};
+    while (reader_->receiveQrCode(&qrCodeData, 0)) {
+        if (!qrCodeData.valid) {
+            Serial.println("QR service: decoder rejected candidate frame.");
+            continue;
+        }
+
+        (void)submitDecodedPayload(reinterpret_cast<const char *>(qrCodeData.payload));
+    }
 }
 
 bool QrService::parseAlbumId(const char *payload, String *albumId) {
@@ -181,14 +191,28 @@ bool QrService::initCamera() {
     }
 
     configureCameraRouting();
-    const camera_config_t config = makeCameraConfig();
-    const esp_err_t err = esp_camera_init(&config);
-    if (err != ESP_OK) {
-        Serial.printf("QR service: esp_camera_init failed: 0x%lx\n",
-                      static_cast<unsigned long>(err));
+    reader_ = new ESP32QRCodeReader(makeCameraPins(), FRAMESIZE_QVGA);
+    reader_->cameraConfig = {};
+
+    const QRCodeReaderSetupErr setupErr = reader_->setup();
+    if (setupErr != SETUP_OK) {
+        switch (setupErr) {
+            case SETUP_NO_PSRAM_ERROR:
+                Serial.println("QR service: QR decoder requires PSRAM.");
+                break;
+            case SETUP_CAMERA_INIT_ERROR:
+                Serial.println("QR service: camera setup failed.");
+                break;
+            case SETUP_OK:
+                break;
+        }
+        delete reader_;
+        reader_ = nullptr;
         disableCameraHardware();
         return false;
     }
+
+    reader_->beginOnCore(kQrDecodeCore);
 
     sensor_t *sensor = esp_camera_sensor_get();
     if (sensor) {
@@ -201,6 +225,12 @@ bool QrService::initCamera() {
 }
 
 void QrService::deinitCamera() {
+    if (reader_) {
+        reader_->end();
+        delete reader_;
+        reader_ = nullptr;
+    }
+
     if (cameraInitialized_) {
         const esp_err_t err = esp_camera_deinit();
         if (err != ESP_OK) {

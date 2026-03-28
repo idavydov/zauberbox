@@ -11,11 +11,14 @@ The current codebase is still a bring-up style application:
   [`app_state.cpp`](./firmware/src/app_state.cpp),
   [`button_controller.cpp`](./firmware/src/button_controller.cpp),
   [`led_controller.cpp`](./firmware/src/led_controller.cpp),
+  [`config_service.cpp`](./firmware/src/config_service.cpp),
   [`wifi_service.cpp`](./firmware/src/wifi_service.cpp),
+  [`media_service.cpp`](./firmware/src/media_service.cpp),
+  [`qr_service.cpp`](./firmware/src/qr_service.cpp),
   [`audio_driver.cpp`](./firmware/src/audio_driver.cpp), and
   [`io_expander.cpp`](./firmware/src/io_expander.cpp)
-- there is no SD-card media engine yet
-- there is no QR scanner/camera pipeline yet
+- an initial SD-card media engine and album-playback path now exist
+- a first OV5640 QR scanner/camera pipeline now exists
 - a canonical app-state store now exists, and `main.cpp` is now effectively
   bootstrap/composition only
 - Wi-Fi provisioning exists, but the normal app server described in the spec
@@ -41,8 +44,11 @@ Status:
 
 Remaining gap:
 
-- buttons, media behavior, and camera behavior are not fully state-driven yet,
-  because the corresponding services do not exist yet
+- buttons, media behavior, and camera behavior are now service-owned, but some
+  state-driven product policy is still incomplete:
+  - non-playback button behavior
+  - scan timeout and duplicate-scan policy
+  - Wi-Fi toggle and app-server behavior
 
 Previous issue:
 
@@ -83,8 +89,8 @@ Status:
 
 Remaining gap:
 
-- there is no product button-policy controller yet
-- media and QR services still do not exist
+- media and QR services now exist, but the remaining work is still split across
+  product-policy gaps rather than missing controller boundaries
 
 Previous issue:
 
@@ -241,7 +247,7 @@ Work:
   - previous/restart current track
 - validate and, if necessary, correct SD-card mount configuration on target
   hardware
-- connect album loading to QR-scan handoff
+- done: connect album loading to QR-scan handoff
 - connect transport controls to the product button policy
 - finalize the playback conflict rule for queued UI sounds versus album content
 - add explicit handling for missing albums and empty albums as product-level
@@ -292,12 +298,13 @@ Work:
   - EXIO camera pin routing
   - `esp_camera` init/deinit for scan mode
 - done: add QR payload parsing and album handoff for `file://NNN` payloads
-- define the decode backend
+- done: add a first decode backend using vendored `quirc` via
+  `ESP32QRCodeReader`
 - continue defining scan session lifecycle:
   - start scanning
-  - decode candidate
-  - validate payload
-  - hand off album ID to media playback
+  - done: decode candidate
+  - done: validate payload
+  - done: hand off album ID to media playback
   - ignore duplicates or restart same album intentionally
 - connect scan timeout to `Idle`
 - make `Idle` the state where camera activity stops while the rest of the
