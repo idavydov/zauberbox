@@ -14,6 +14,7 @@ class AppController {
   private:
     static void bootSoundTaskEntry(void *context);
     void runBootSoundTask();
+    void handleButtonEvent(const ButtonEvent &event);
 
     ButtonController buttonController_;
     LedController ledController_;

@@ -21,6 +21,8 @@ constexpr gpio_num_t kI2SBclk = GPIO_NUM_13;
 constexpr gpio_num_t kI2SWs = GPIO_NUM_14;
 constexpr gpio_num_t kI2SDout = GPIO_NUM_16;
 constexpr i2s_port_t kI2SPort = I2S_NUM_0;
+constexpr uint8_t kMinVolume = 0;
+constexpr uint8_t kMaxVolume = 21;
 constexpr uint8_t kPlaybackVolume = 14;
 constexpr size_t kAudioCommandQueueDepth = 8;
 constexpr size_t kMaxAudioPathLength = 192;
@@ -30,6 +32,7 @@ enum class AudioCommandType : uint8_t {
     ReplaceQueue,
     Stop,
     TogglePause,
+    SetVolume,
 };
 
 struct AudioPlaybackRequest {
@@ -40,6 +43,7 @@ struct AudioPlaybackRequest {
 struct AudioCommand {
     AudioCommandType type;
     AudioPlaybackRequest request;
+    uint8_t volume;
 };
 
 Audio gFilePlayer(kI2SPort);
@@ -47,6 +51,7 @@ QueueHandle_t gAudioCommandQueue = nullptr;
 TaskHandle_t gAudioServiceTask = nullptr;
 AudioPlaybackFinishedCallback gPlaybackFinishedCallback = nullptr;
 bool gSuppressFinishedCallback = false;
+uint8_t gCurrentVolume = kPlaybackVolume;
 
 fs::FS *filesystemForStorage(AudioStorage storage) {
     switch (storage) {
@@ -143,7 +148,7 @@ bool configurePlayer() {
         Serial.println("Audio player I2S pin configuration failed.");
         return false;
     }
-    gFilePlayer.setVolume(kPlaybackVolume);
+    gFilePlayer.setVolume(gCurrentVolume);
     return true;
 }
 
@@ -217,6 +222,10 @@ void audioServiceTask(void *pvParameters) {
                     if (gFilePlayer.isRunning()) {
                         (void)gFilePlayer.pauseResume();
                     }
+                    break;
+                case AudioCommandType::SetVolume:
+                    gCurrentVolume = command.volume;
+                    gFilePlayer.setVolume(gCurrentVolume);
                     break;
             }
         }
@@ -312,6 +321,20 @@ bool audioTogglePause() {
 
 bool audioIsRunning() {
     return gFilePlayer.isRunning();
+}
+
+bool audioSetVolume(uint8_t volume) {
+    const uint8_t clampedVolume = std::min<uint8_t>(kMaxVolume, std::max<uint8_t>(kMinVolume, volume));
+    AudioCommand command = {
+        .type = AudioCommandType::SetVolume,
+        .request = {},
+        .volume = clampedVolume,
+    };
+    return queueCommand(command);
+}
+
+uint8_t audioVolume() {
+    return gCurrentVolume;
 }
 
 uint32_t audioCurrentTimeSeconds() {

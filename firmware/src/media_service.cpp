@@ -165,6 +165,12 @@ bool MediaService::stopAlbum() {
     return true;
 }
 
+bool MediaService::changeVolume(int8_t delta) {
+    const int nextVolume = static_cast<int>(audioVolume()) + delta;
+    const int clampedVolume = std::max(0, std::min(21, nextVolume));
+    return audioSetVolume(static_cast<uint8_t>(clampedVolume));
+}
+
 bool MediaService::isStorageReady() const {
     return storageReady_;
 }

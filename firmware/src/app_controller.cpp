@@ -14,7 +14,9 @@ void AppController::begin() {
     appStateStore().init();
     configService().begin();
 
-    buttonController_.begin();
+    buttonController_.begin([this](const ButtonEvent &event) {
+        handleButtonEvent(event);
+    });
     ledController_.begin();
 
     if (buttonController_.waitForFactoryResetRequest(kFactoryResetHoldMs)) {
@@ -48,4 +50,35 @@ void AppController::runBootSoundTask() {
     vTaskDelay(pdMS_TO_TICKS(kBootSoundDelayMs));
     mediaService_.playBootSound();
     vTaskDelete(nullptr);
+}
+
+void AppController::handleButtonEvent(const ButtonEvent &event) {
+    const AppState state = appStateStore().current();
+    if (state != AppState::Playing && state != AppState::Paused) {
+        return;
+    }
+
+    switch (event.buttonId) {
+        case ButtonId::Key1:
+            if (event.pressKind == ButtonPressKind::ShortPress) {
+                (void)mediaService_.changeVolume(-1);
+            } else {
+                (void)mediaService_.previousTrackOrRestart();
+            }
+            break;
+        case ButtonId::Key2:
+            if (event.pressKind == ButtonPressKind::ShortPress) {
+                (void)mediaService_.togglePause();
+            } else {
+                (void)mediaService_.stopAlbum();
+            }
+            break;
+        case ButtonId::Key3:
+            if (event.pressKind == ButtonPressKind::ShortPress) {
+                (void)mediaService_.changeVolume(1);
+            } else {
+                (void)mediaService_.nextTrack();
+            }
+            break;
+    }
 }
