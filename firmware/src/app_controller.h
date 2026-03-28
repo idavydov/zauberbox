@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include "button_controller.h"
 #include "led_controller.h"
+#include "media_service.h"
 #include "wifi_service.h"
 
 class AppController {
@@ -16,6 +17,7 @@ class AppController {
 
     ButtonController buttonController_;
     LedController ledController_;
+    MediaService mediaService_;
     WifiService wifiService_;
     TaskHandle_t bootSoundTaskHandle_ = nullptr;
 };

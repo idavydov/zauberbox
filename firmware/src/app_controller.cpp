@@ -1,7 +1,6 @@
 #include "app_controller.h"
 
 #include "app_state.h"
-#include "audio_driver.h"
 #include "config_service.h"
 
 namespace {
@@ -13,10 +12,11 @@ constexpr uint32_t kBootSoundDelayMs = 900;
 void AppController::begin() {
     appStateStore().init();
     configService().begin();
+    (void)mediaService_.begin();
 
     buttonController_.begin();
     ledController_.begin();
-    wifiService_.begin(audioPlayWifiConnectedSound);
+    wifiService_.begin([this]() { mediaService_.playWifiConnectedSound(); });
 
     if (!bootSoundTaskHandle_) {
         xTaskCreatePinnedToCore(bootSoundTaskEntry,
@@ -35,6 +35,7 @@ void AppController::begin() {
 }
 
 void AppController::update() {
+    mediaService_.update();
     wifiService_.update();
 }
 
@@ -44,6 +45,6 @@ void AppController::bootSoundTaskEntry(void *context) {
 
 void AppController::runBootSoundTask() {
     vTaskDelay(pdMS_TO_TICKS(kBootSoundDelayMs));
-    audioPlayBootSound();
+    mediaService_.playBootSound();
     vTaskDelete(nullptr);
 }

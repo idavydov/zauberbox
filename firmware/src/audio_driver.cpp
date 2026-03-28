@@ -1,10 +1,15 @@
 #include "audio_driver.h"
 
 #include <Audio.h>
+#include <FS.h>
 #include <LittleFS.h>
+#include <SD_MMC.h>
 #include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+
+#include <deque>
+
 #include "io_expander.h"
 
 namespace {
@@ -16,14 +21,43 @@ constexpr gpio_num_t kI2SBclk = GPIO_NUM_13;
 constexpr gpio_num_t kI2SWs = GPIO_NUM_14;
 constexpr gpio_num_t kI2SDout = GPIO_NUM_16;
 constexpr i2s_port_t kI2SPort = I2S_NUM_0;
-constexpr char kBootSoundPath[] = "/boot.wav";
-constexpr char kWifiConnectedSoundPath[] = "/wifi_connected.wav";
 constexpr uint8_t kPlaybackVolume = 14;
-constexpr size_t kAudioQueueDepth = 6;
+constexpr size_t kAudioCommandQueueDepth = 8;
+constexpr size_t kMaxAudioPathLength = 192;
+
+enum class AudioCommandType : uint8_t {
+    Enqueue,
+    ReplaceQueue,
+    Stop,
+    TogglePause,
+};
+
+struct AudioPlaybackRequest {
+    AudioStorage storage;
+    char path[kMaxAudioPathLength];
+};
+
+struct AudioCommand {
+    AudioCommandType type;
+    AudioPlaybackRequest request;
+};
 
 Audio gFilePlayer(kI2SPort);
-QueueHandle_t gAudioQueue = nullptr;
+QueueHandle_t gAudioCommandQueue = nullptr;
 TaskHandle_t gAudioServiceTask = nullptr;
+AudioPlaybackFinishedCallback gPlaybackFinishedCallback = nullptr;
+bool gSuppressFinishedCallback = false;
+
+fs::FS *filesystemForStorage(AudioStorage storage) {
+    switch (storage) {
+        case AudioStorage::LittleFs:
+            return &LittleFS;
+        case AudioStorage::SdCard:
+            return &SD_MMC;
+    }
+
+    return nullptr;
+}
 
 bool writeRegister8(uint8_t deviceAddr, uint8_t reg, uint8_t value) {
     Wire.beginTransmission(deviceAddr);
@@ -113,39 +147,98 @@ bool configurePlayer() {
     return true;
 }
 
-bool playFile(const char *path) {
-    if (!LittleFS.exists(path)) {
-        Serial.printf("Audio file not found: %s\n", path);
+bool playRequest(const AudioPlaybackRequest &request) {
+    fs::FS *filesystem = filesystemForStorage(request.storage);
+    if (!filesystem) {
+        Serial.println("Audio playback start failed: unsupported storage.");
         return false;
     }
-    if (gFilePlayer.isRunning()) {
-        gFilePlayer.stopSong();
+    if (!filesystem->exists(request.path)) {
+        Serial.printf("Audio file not found: %s\n", request.path);
+        return false;
     }
-    if (!gFilePlayer.connecttoFS(LittleFS, path)) {
-        Serial.printf("Audio playback start failed: %s\n", path);
+    if (!gFilePlayer.connecttoFS(*filesystem, request.path)) {
+        Serial.printf("Audio playback start failed: %s\n", request.path);
         return false;
     }
 
-    Serial.printf("Playing audio: %s\n", path);
+    Serial.printf("Playing audio: %s\n", request.path);
     return true;
 }
 
-bool enqueuePath(const char *path) {
-    if (!gAudioQueue) {
+void fillRequest(AudioPlaybackRequest *request, AudioStorage storage, const char *path) {
+    if (!request) {
+        return;
+    }
+
+    request->storage = storage;
+    request->path[0] = '\0';
+    if (!path) {
+        return;
+    }
+
+    snprintf(request->path, sizeof(request->path), "%s", path);
+}
+
+bool queueCommand(const AudioCommand &command) {
+    if (!gAudioCommandQueue) {
         return false;
     }
-    return xQueueSend(gAudioQueue, &path, 0) == pdPASS;
+
+    return xQueueSend(gAudioCommandQueue, &command, 0) == pdPASS;
 }
 
 void audioServiceTask(void *pvParameters) {
-    const char *path = nullptr;
+    AudioCommand command = {};
+    std::deque<AudioPlaybackRequest> pendingRequests;
 
     while (true) {
-        if (xQueueReceive(gAudioQueue, &path, pdMS_TO_TICKS(1)) == pdPASS) {
-            playFile(path);
+        if (xQueueReceive(gAudioCommandQueue, &command, pdMS_TO_TICKS(1)) == pdPASS) {
+            switch (command.type) {
+                case AudioCommandType::Enqueue:
+                    pendingRequests.push_back(command.request);
+                    break;
+                case AudioCommandType::ReplaceQueue:
+                    pendingRequests.clear();
+                    pendingRequests.push_back(command.request);
+                    if (gFilePlayer.isRunning()) {
+                        gSuppressFinishedCallback = true;
+                        gFilePlayer.stopSong();
+                    }
+                    break;
+                case AudioCommandType::Stop:
+                    pendingRequests.clear();
+                    if (gFilePlayer.isRunning()) {
+                        gSuppressFinishedCallback = true;
+                        gFilePlayer.stopSong();
+                    }
+                    break;
+                case AudioCommandType::TogglePause:
+                    if (gFilePlayer.isRunning()) {
+                        (void)gFilePlayer.pauseResume();
+                    }
+                    break;
+            }
         }
-        if (gFilePlayer.isRunning()) {
+
+        const bool wasRunning = gFilePlayer.isRunning();
+        if (wasRunning) {
             gFilePlayer.loop();
+        }
+        const bool isRunning = gFilePlayer.isRunning();
+
+        if (wasRunning && !isRunning) {
+            if (gSuppressFinishedCallback) {
+                gSuppressFinishedCallback = false;
+            } else if (gPlaybackFinishedCallback) {
+                gPlaybackFinishedCallback();
+            }
+        }
+
+        if (!isRunning && !pendingRequests.empty()) {
+            const AudioPlaybackRequest nextRequest = pendingRequests.front();
+            pendingRequests.pop_front();
+            (void)playRequest(nextRequest);
         }
     }
 }
@@ -162,10 +255,10 @@ bool audioInit() {
     if (!configurePlayer()) {
         return false;
     }
-    if (!gAudioQueue) {
-        gAudioQueue = xQueueCreate(kAudioQueueDepth, sizeof(const char *));
-        if (!gAudioQueue) {
-            Serial.println("Audio queue creation failed.");
+    if (!gAudioCommandQueue) {
+        gAudioCommandQueue = xQueueCreate(kAudioCommandQueueDepth, sizeof(AudioCommand));
+        if (!gAudioCommandQueue) {
+            Serial.println("Audio command queue creation failed.");
             return false;
         }
     }
@@ -175,10 +268,56 @@ bool audioInit() {
     return true;
 }
 
-bool audioPlayBootSound() {
-    return enqueuePath(kBootSoundPath);
+bool audioQueueFile(AudioStorage storage, const char *path) {
+    if (!path || path[0] == '\0') {
+        return false;
+    }
+
+    AudioCommand command = {
+        .type = AudioCommandType::Enqueue,
+        .request = {},
+    };
+    fillRequest(&command.request, storage, path);
+    return queueCommand(command);
 }
 
-bool audioPlayWifiConnectedSound() {
-    return enqueuePath(kWifiConnectedSoundPath);
+bool audioStartFile(AudioStorage storage, const char *path) {
+    if (!path || path[0] == '\0') {
+        return false;
+    }
+
+    AudioCommand command = {
+        .type = AudioCommandType::ReplaceQueue,
+        .request = {},
+    };
+    fillRequest(&command.request, storage, path);
+    return queueCommand(command);
+}
+
+bool audioStopPlayback() {
+    AudioCommand command = {
+        .type = AudioCommandType::Stop,
+        .request = {},
+    };
+    return queueCommand(command);
+}
+
+bool audioTogglePause() {
+    AudioCommand command = {
+        .type = AudioCommandType::TogglePause,
+        .request = {},
+    };
+    return queueCommand(command);
+}
+
+bool audioIsRunning() {
+    return gFilePlayer.isRunning();
+}
+
+uint32_t audioCurrentTimeSeconds() {
+    return gFilePlayer.getAudioCurrentTime();
+}
+
+void audioSetPlaybackFinishedCallback(AudioPlaybackFinishedCallback callback) {
+    gPlaybackFinishedCallback = callback;
 }

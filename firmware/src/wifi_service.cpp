@@ -49,7 +49,7 @@ void WifiService::syncAppState() {
 
     appStateStore().syncWifiMode(currentMode);
     if (currentMode == WifiMode::Connected && onConnected_) {
-        (void)onConnected_();
+        onConnected_();
     }
     lastMode_ = currentMode;
 }

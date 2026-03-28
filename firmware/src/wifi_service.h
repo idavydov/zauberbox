@@ -1,9 +1,12 @@
 #pragma once
 
 #include <AyresWiFiManager.h>
+
+#include <functional>
+
 #include "app_state.h"
 
-using WifiConnectedCallback = bool (*)();
+using WifiConnectedCallback = std::function<void()>;
 
 class WifiService {
   public:

@@ -146,7 +146,24 @@ Why first:
 
 ### 4. Decide the long-term audio service boundary
 
-Current issue:
+Status:
+
+- completed for the current runtime scope
+- a dedicated `media_service` now exists above `audio_driver`
+- `audio_driver` now owns generic queued file playback instead of named product
+  sounds
+- `media_service` now owns UI sounds, SD-card mounting, album discovery, and
+  basic album track sequencing
+
+Remaining gap:
+
+- the new media service is not yet wired to QR scans or product button policy
+- SD-card mounting still needs hardware validation and any board-specific pin
+  overrides that may be required on the target device
+- playback conflict policy for UI sounds versus album playback is still only a
+  first implementation, not a finalized product rule
+
+Previous issue:
 
 - the audio path is now much better than before, but it is still only a thin
   “play this file” wrapper around `ESP32-audioI2S`
@@ -211,18 +228,24 @@ Goal:
 
 Work:
 
-- add SD-card mounting and error handling
-- define album discovery from root directories like `001`, `002`, `003`
-- define supported audio-file filtering and alphabetical ordering
-- implement `media_service` with:
+- done: introduce `media_service` above `audio_driver`
+- done: move UI sound ownership out of `audio_driver`
+- done: add initial SD-card mount path and error handling
+- done: define supported audio-file filtering and alphabetical ordering
+- done: add basic album sequencing:
   - load album
-  - play
-  - pause
-  - resume
+  - play first track
+  - advance on track completion
+  - pause/resume
   - next track
-  - previous track / restart current track
-  - playback finished callback
-- keep UI sounds as a separate queue or playback class within the same service
+  - previous/restart current track
+- validate and, if necessary, correct SD-card mount configuration on target
+  hardware
+- connect album loading to QR-scan handoff
+- connect transport controls to the product button policy
+- finalize the playback conflict rule for queued UI sounds versus album content
+- add explicit handling for missing albums and empty albums as product-level
+  error outcomes, not just service-level failures
 
 Definition of done:
 
