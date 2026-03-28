@@ -1,0 +1,23 @@
+This directory contains vendored QR-scanning sources copied from upstream
+projects. Keep the upstream README and licensing files alongside the vendored
+code when updating these files.
+
+Source mapping:
+
+- `ESP32QRCodeReader.cpp`
+- `ESP32QRCodeReader.h`
+  - Source: https://github.com/alvarowolfx/ESP32QRCodeReader
+  - Upstream docs: `README.upstream.md`
+  - Upstream license: `LICENSE.upstream`
+
+- `quirc/`
+  - Source: https://github.com/dlbeer/quirc
+  - Upstream docs: `quirc/README.upstream.md`
+  - Upstream license: `quirc/LICENSE.upstream`
+
+- `openmv/collections.c`
+- `openmv/collections.h`
+- `openmv/fmath.h`
+  - Source: https://github.com/openmv/openmv
+  - Upstream docs: `openmv/README.upstream.md`
+  - Upstream licensing note: `openmv/LICENSING.upstream.md`
