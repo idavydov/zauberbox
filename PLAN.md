@@ -261,14 +261,17 @@ Goal:
 Work:
 
 - done: remove `KEY3 -> test.mp3` from normal runtime
-- implement per-state button mappings:
+- done: define long-press timing and debounce in one place
+- done: keep factory reset as a global/boot-only action
+- done: move physical button scanning out of isolated one-off logic and into a
+  dedicated button event source
+- done: implement playback-state button mappings:
   - volume down/up
   - play/pause
   - previous/restart
   - next
   - stop to QR scan
-- define long-press timing and debounce in one place
-- keep factory reset as a global/boot-only action
+- connect non-playback button behavior once QR and Wi-Fi toggle flows exist
 
 Definition of done:
 
@@ -283,13 +286,18 @@ Goal:
 
 Work:
 
-- choose and integrate the camera/QR stack
-- isolate it behind `qr_service`
-- define scan session lifecycle:
+- done: isolate camera ownership behind `qr_service`
+- done: integrate the OV5640 board bring-up path:
+  - EXIO camera power control
+  - EXIO camera pin routing
+  - `esp_camera` init/deinit for scan mode
+- done: add QR payload parsing and album handoff for `file://NNN` payloads
+- define the decode backend
+- continue defining scan session lifecycle:
   - start scanning
   - decode candidate
   - validate payload
-  - hand off album ID
+  - hand off album ID to media playback
   - ignore duplicates or restart same album intentionally
 - connect scan timeout to `Idle`
 - make `Idle` the state where camera activity stops while the rest of the

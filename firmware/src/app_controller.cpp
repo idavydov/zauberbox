@@ -24,6 +24,9 @@ void AppController::begin() {
     }
 
     (void)mediaService_.begin();
+    (void)qrService_.begin([this](const String &albumId) {
+        handleQrAlbumScanned(albumId);
+    });
 
     if (!bootSoundTaskHandle_) {
         xTaskCreatePinnedToCore(bootSoundTaskEntry,
@@ -40,6 +43,7 @@ void AppController::begin() {
 
 void AppController::update() {
     mediaService_.update();
+    qrService_.update();
 }
 
 void AppController::bootSoundTaskEntry(void *context) {
@@ -81,4 +85,12 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
             }
             break;
     }
+}
+
+void AppController::handleQrAlbumScanned(const String &albumId) {
+    if (albumId.isEmpty()) {
+        return;
+    }
+
+    (void)mediaService_.playAlbum(albumId.c_str());
 }
