@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "audio_driver.h"
+#include "config_service.h"
 
 namespace {
 
@@ -11,6 +12,7 @@ constexpr uint32_t kBootSoundDelayMs = 900;
 
 void AppController::begin() {
     appStateStore().init();
+    configService().begin();
 
     buttonController_.begin();
     ledController_.begin();

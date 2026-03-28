@@ -1,7 +1,7 @@
 #include "button_controller.h"
 
-#include <LittleFS.h>
 #include "app_state.h"
+#include "config_service.h"
 #include "io_expander.h"
 
 namespace {
@@ -68,8 +68,11 @@ bool ButtonController::isKey1Pressed() const {
 
 [[noreturn]] void ButtonController::eraseWifiCredentialsAndReboot() const {
     appStateStore().requestFactoryReset();
-    const bool removed = LittleFS.remove("/wifi.json");
-    Serial.printf("KEY1 long press: %s /wifi.json\n", removed ? "removed" : "could not remove");
+    const FactoryResetReport report = configService().eraseFactoryData();
+    Serial.printf("Factory reset: removed=%u missing=%u failed=%u\n",
+                  report.removedCount,
+                  report.missingCount,
+                  report.failedCount);
 
     const uint32_t rebootAt = millis() + 3000;
     while (millis() < rebootAt) {

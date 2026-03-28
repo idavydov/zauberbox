@@ -1,5 +1,7 @@
 #include "wifi_service.h"
 
+#include "config_service.h"
+
 void WifiService::begin(WifiConnectedCallback onConnected) {
     onConnected_ = onConnected;
 
@@ -10,7 +12,7 @@ void WifiService::begin(WifiConnectedCallback onConnected) {
     manager_.setWebClientCheck(true);
     manager_.begin();
 
-    if (manager_.tieneCredenciales()) {
+    if (configService().hasWifiCredentials()) {
         appStateStore().syncWifiMode(WifiMode::Connecting);
         lastMode_ = WifiMode::Connecting;
     }

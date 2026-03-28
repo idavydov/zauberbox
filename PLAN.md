@@ -111,7 +111,21 @@ Why first:
 
 ### 3. Introduce a configuration/persistence layer
 
-Current issue:
+Status:
+
+- completed for the current runtime scope
+- a dedicated `config_service` now owns persisted config file paths
+- factory reset now runs through that service instead of deleting
+  `/wifi.json` directly
+- Wi-Fi credential presence checks now also go through that service
+
+Remaining gap:
+
+- persisted settings are not yet modeled as typed application config objects
+- web authentication and runtime preferences are only represented as owned
+  reset targets, not as first-class settings APIs
+
+Previous issue:
 
 - factory reset currently deletes `/wifi.json` directly
 - the spec now requires more than Wi-Fi credentials to be reset
@@ -179,12 +193,15 @@ Work:
 - done: extract `wifi_service`
 - done: move remaining boot/app orchestration out of `main.cpp`
 - done: make `main.cpp` composition and bootstrap only
+- done: introduce `config_service` and route factory reset/config checks
+  through it
 
 Definition of done:
 
 - `main.cpp` is mostly setup and service wiring
 - no LED logic or button task logic remains inline in `main.cpp`
 - state transitions are explicit and centralized
+- persisted config file ownership is no longer spread across runtime code
 
 ## Phase 2: Build the Media Domain
 
