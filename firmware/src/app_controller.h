@@ -14,6 +14,7 @@ class AppController {
     void update();
 
   private:
+    void handleScanAudioState();
     void handlePendingQrAlbumStart();
     void handleButtonEvent(const ButtonEvent &event);
     bool handleQrAlbumScanned(const String &albumId);
@@ -23,8 +24,13 @@ class AppController {
     MediaService mediaService_;
     QrService qrService_;
     WifiService wifiService_;
+    bool lastScanning_ = false;
     String pendingQrAlbumId_;
     uint32_t pendingQrAlbumStartAtMs_ = 0;
     bool resumeScanningAfterQrError_ = false;
     uint32_t resumeScanningReadyAtMs_ = 0;
+    uint32_t scanStartChimeReadyAtMs_ = 0;
+    uint32_t scanStartChimeMuteReadyAtMs_ = 0;
+    bool scanStartChimeQueued_ = false;
+    bool scanSpeakerMutedForScan_ = false;
 };

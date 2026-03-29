@@ -11,7 +11,7 @@
 
 namespace {
 
-constexpr char kBootSoundPath[] = "/boot.wav";
+constexpr char kScanStartSoundPath[] = "/scan_start.wav";
 constexpr char kWifiConnectedSoundPath[] = "/wifi_connected.wav";
 constexpr char kErrorSoundPath[] = "/error.wav";
 constexpr char kSleepSoundPath[] = "/sleep.wav";
@@ -49,10 +49,6 @@ void MediaService::update() {
     }
 
     handlePlaybackFinished();
-}
-
-bool MediaService::playBootSound() {
-    return playUiSound(UiSound::Boot);
 }
 
 bool MediaService::playWifiConnectedSound() {
@@ -189,8 +185,8 @@ void MediaService::handlePlaybackFinishedStatic() {
 
 const char *MediaService::uiSoundPath(UiSound sound) {
     switch (sound) {
-        case UiSound::Boot:
-            return kBootSoundPath;
+        case UiSound::ScanStart:
+            return kScanStartSoundPath;
         case UiSound::WifiConnected:
             return kWifiConnectedSoundPath;
         case UiSound::Error:

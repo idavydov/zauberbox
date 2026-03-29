@@ -10,6 +10,7 @@ enum class AudioStorage : uint8_t {
 using AudioPlaybackFinishedCallback = void (*)();
 
 bool audioInit();
+bool audioDisableOutputForCameraScan();
 bool audioQueueFile(AudioStorage storage, const char *path);
 bool audioStartFile(AudioStorage storage, const char *path);
 bool audioStopPlayback();

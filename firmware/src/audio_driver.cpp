@@ -144,6 +144,18 @@ bool enableSpeaker() {
     return true;
 }
 
+bool disableSpeaker() {
+    if (!ioExpanderPinMode(kIoExpanderSpeakerEnablePin, OUTPUT) ||
+        !ioExpanderDigitalWrite(kIoExpanderSpeakerEnablePin, LOW)) {
+        Serial.println("Speaker disable via I/O expander failed.");
+        return false;
+    }
+
+    delay(20);
+    Serial.println("Speaker disabled via TCA9555 EXIO8.");
+    return true;
+}
+
 bool configurePlayer() {
     if (!gFilePlayer.setPinout(kI2SBclk, kI2SWs, kI2SDout, kI2SMclk)) {
         Serial.println("Audio player I2S pin configuration failed.");
@@ -257,7 +269,7 @@ void audioServiceTask(void *pvParameters) {
 
 bool audioInit() {
     if (gAudioInitialized) {
-        return true;
+        return enableSpeaker();
     }
     if (!enableSpeaker()) {
         return false;
@@ -280,6 +292,10 @@ bool audioInit() {
     }
     gAudioInitialized = true;
     return true;
+}
+
+bool audioDisableOutputForCameraScan() {
+    return disableSpeaker();
 }
 
 bool audioQueueFile(AudioStorage storage, const char *path) {

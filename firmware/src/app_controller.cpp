@@ -9,6 +9,7 @@ namespace {
 constexpr uint32_t kFactoryResetHoldMs = 3000;
 constexpr uint32_t kAudioReadyAfterInitDelayMs = 1000;
 constexpr uint32_t kQrErrorResumeDelayMs = 250;
+constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
 
 } // namespace
 
@@ -35,6 +36,7 @@ void AppController::begin() {
 
 void AppController::update() {
     qrService_.update();
+    handleScanAudioState();
     handlePendingQrAlbumStart();
     mediaService_.update();
 }
@@ -94,6 +96,55 @@ bool AppController::handleQrAlbumScanned(const String &albumId) {
     Serial.printf("App controller: queued QR album %s for playback after scan shutdown.\n",
                   albumId.c_str());
     return true;
+}
+
+void AppController::handleScanAudioState() {
+    const bool scanning = qrService_.isScanning();
+    if (scanning != lastScanning_) {
+        lastScanning_ = scanning;
+        scanStartChimeReadyAtMs_ = scanning ? 1 : 0;
+        scanStartChimeMuteReadyAtMs_ = 0;
+        scanStartChimeQueued_ = false;
+        scanSpeakerMutedForScan_ = false;
+    }
+
+    if (!scanning || appStateStore().current() != AppState::QrScan || !pendingQrAlbumId_.isEmpty()) {
+        return;
+    }
+
+    if (scanSpeakerMutedForScan_) {
+        return;
+    }
+
+    if (scanStartChimeReadyAtMs_ == 1) {
+        if (!audioInit()) {
+            Serial.println("App controller: audio init for scan-start chime failed.");
+            return;
+        }
+        scanStartChimeReadyAtMs_ = millis() + kAudioReadyAfterInitDelayMs;
+        return;
+    }
+
+    if (!scanStartChimeQueued_) {
+        if (scanStartChimeReadyAtMs_ == 0 || millis() < scanStartChimeReadyAtMs_) {
+            return;
+        }
+        if (!mediaService_.playUiSound(UiSound::ScanStart)) {
+            Serial.println("App controller: failed to queue scan-start chime.");
+            scanSpeakerMutedForScan_ = audioDisableOutputForCameraScan();
+            return;
+        }
+
+        scanStartChimeQueued_ = true;
+        scanStartChimeMuteReadyAtMs_ = millis() + kScanStartSpeakerHoldMs;
+        return;
+    }
+
+    if (scanStartChimeMuteReadyAtMs_ != 0 &&
+        millis() >= scanStartChimeMuteReadyAtMs_) {
+        scanSpeakerMutedForScan_ = audioDisableOutputForCameraScan();
+        scanStartChimeMuteReadyAtMs_ = 0;
+    }
 }
 
 void AppController::handlePendingQrAlbumStart() {

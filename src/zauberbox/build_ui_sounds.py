@@ -53,10 +53,10 @@ def _write_wav(path: Path, pcm: list[int]) -> None:
 
 
 def build_ui_sounds(output_dir: Path) -> None:
-    boot = _sequence(
+    scan_start = _sequence(
         [
-            (880.0, 60, 0.06, 25),
-            (1175.0, 70, 0.055, 0),
+            (1046.5, 45, 0.04, 30),
+            (1318.5, 65, 0.04, 0),
         ]
     )
     sleep = _sequence(
@@ -84,7 +84,7 @@ def build_ui_sounds(output_dir: Path) -> None:
     )
 
     files = {
-        "boot.wav": boot,
+        "scan_start.wav": scan_start,
         "sleep.wav": sleep,
         "error.wav": error,
         "wifi_connected.wav": wifi_connected,

@@ -6,7 +6,7 @@
 #include <vector>
 
 enum class UiSound : uint8_t {
-    Boot,
+    ScanStart,
     WifiConnected,
     Error,
     Sleep,
@@ -18,7 +18,6 @@ class MediaService {
     bool begin();
     void update();
 
-    bool playBootSound();
     bool playWifiConnectedSound();
     bool playUiSound(UiSound sound);
 
