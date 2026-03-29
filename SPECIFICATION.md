@@ -115,12 +115,12 @@ otherwise.
 
 ### In `Playing` or `Paused`
 
-- `KEY1` short press: decrease volume by one step.
-- `KEY3` short press: increase volume by one step.
-- `KEY2` short press: toggle play/pause.
-- `KEY1` long press: previous track. If the current track has already played
+- `KEY1` short press: previous track. If the current track has already played
   past the configured threshold, restart the current track instead.
-- `KEY3` long press: next track.
+- `KEY3` short press: next track.
+- `KEY2` short press: toggle play/pause.
+- `KEY1` long press: decrease volume by one step.
+- `KEY3` long press: increase volume by one step.
 - `KEY2` long press: stop playback and return to `QR Scan`.
 
 ### Global
