@@ -43,18 +43,24 @@ The firmware behavior should be modeled as explicit states.
 
 ### 1. Boot
 
-- The device initializes hardware, storage, audio, buttons, LED, camera, and
+- The device initializes hardware, storage, buttons, LED, camera, and
   configuration.
 - If `KEY1` is held for more than 3 seconds during boot, the device resets to
   factory settings.
 - Wi-Fi is disabled by default.
 - After initialization completes, the device enters `QR Scan` mode.
+- Audio must not be initialized before camera startup, because on current
+  hardware audio-first startup can break later camera operation, while
+  camera-first startup followed by delayed audio initialization is stable.
 
 ### 2. QR Scan
 
 - On entry, the device is idle and ready to scan for a QR code.
 - The LED shows the scan animation.
-- A short startup sound may be played when entering this state after boot.
+- After camera startup, audio may be initialized and a short `scan_start`
+  chime may be played after a short delay.
+- After the startup chime, speaker output may be disabled while active scanning
+  continues, to reduce interference noise.
 - The camera continuously looks for a QR code.
 - If no QR code is detected for the configured timeout, the device enters
   `Idle`.
@@ -141,7 +147,8 @@ otherwise.
 Feedback sounds should be treated as distinct UI events and must not require a
 separate audio path from normal file playback.
 
-- Boot sound: short sound played shortly after boot completes.
+- Scan-start chime: short sound played shortly after camera startup when
+  entering `QR Scan` from boot.
 - Sleep sound: short sound played when entering `Sleep`.
 - Button sound: optional short confirmation sound for button presses.
 - Error sound: played for invalid QR codes, missing albums, or empty albums.
@@ -150,6 +157,10 @@ separate audio path from normal file playback.
 If a feedback sound conflicts with currently playing content, the implementation
 must define whether the sound is mixed, queued, or allowed to interrupt current
 playback. The current preferred behavior is a single queued playback path.
+
+When transitioning from active scanning to QR error or album playback, the
+camera should be stopped before initializing audio for the next sound or media
+playback path.
 
 ## LED Behavior
 
