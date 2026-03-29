@@ -2,7 +2,6 @@
 #include <LittleFS.h>
 #include <Wire.h>
 #include "app_controller.h"
-#include "audio_driver.h"
 #include "io_expander.h"
 
 constexpr uint8_t kI2cScl = 10;
@@ -24,9 +23,6 @@ void setup() {
 
     if (!ioExpanderInit()) {
         Serial.println("I/O expander init failed.");
-    }
-    if (!audioInit()) {
-        Serial.println("Audio init failed.");
     }
 
     gAppController.begin();

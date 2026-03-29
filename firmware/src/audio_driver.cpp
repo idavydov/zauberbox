@@ -52,6 +52,7 @@ TaskHandle_t gAudioServiceTask = nullptr;
 AudioPlaybackFinishedCallback gPlaybackFinishedCallback = nullptr;
 bool gSuppressFinishedCallback = false;
 uint8_t gCurrentVolume = kPlaybackVolume;
+bool gAudioInitialized = false;
 
 fs::FS *filesystemForStorage(AudioStorage storage) {
     switch (storage) {
@@ -255,6 +256,9 @@ void audioServiceTask(void *pvParameters) {
 } // namespace
 
 bool audioInit() {
+    if (gAudioInitialized) {
+        return true;
+    }
     if (!enableSpeaker()) {
         return false;
     }
@@ -274,11 +278,15 @@ bool audioInit() {
     if (!gAudioServiceTask) {
         xTaskCreatePinnedToCore(audioServiceTask, "Audio_Service", 8192, nullptr, 2, &gAudioServiceTask, 0);
     }
+    gAudioInitialized = true;
     return true;
 }
 
 bool audioQueueFile(AudioStorage storage, const char *path) {
     if (!path || path[0] == '\0') {
+        return false;
+    }
+    if (!audioInit()) {
         return false;
     }
 
@@ -292,6 +300,9 @@ bool audioQueueFile(AudioStorage storage, const char *path) {
 
 bool audioStartFile(AudioStorage storage, const char *path) {
     if (!path || path[0] == '\0') {
+        return false;
+    }
+    if (!audioInit()) {
         return false;
     }
 
@@ -312,6 +323,10 @@ bool audioStopPlayback() {
 }
 
 bool audioTogglePause() {
+    if (!audioInit()) {
+        return false;
+    }
+
     AudioCommand command = {
         .type = AudioCommandType::TogglePause,
         .request = {},
@@ -324,6 +339,10 @@ bool audioIsRunning() {
 }
 
 bool audioSetVolume(uint8_t volume) {
+    if (!audioInit()) {
+        return false;
+    }
+
     const uint8_t clampedVolume = std::min<uint8_t>(kMaxVolume, std::max<uint8_t>(kMinVolume, volume));
     AudioCommand command = {
         .type = AudioCommandType::SetVolume,

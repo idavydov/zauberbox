@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+
 #include "button_controller.h"
 #include "led_controller.h"
 #include "media_service.h"
@@ -13,8 +14,7 @@ class AppController {
     void update();
 
   private:
-    static void bootSoundTaskEntry(void *context);
-    void runBootSoundTask();
+    void handlePendingQrAlbumStart();
     void handleButtonEvent(const ButtonEvent &event);
     bool handleQrAlbumScanned(const String &albumId);
 
@@ -23,5 +23,8 @@ class AppController {
     MediaService mediaService_;
     QrService qrService_;
     WifiService wifiService_;
-    TaskHandle_t bootSoundTaskHandle_ = nullptr;
+    String pendingQrAlbumId_;
+    uint32_t pendingQrAlbumStartAtMs_ = 0;
+    bool resumeScanningAfterQrError_ = false;
+    uint32_t resumeScanningReadyAtMs_ = 0;
 };

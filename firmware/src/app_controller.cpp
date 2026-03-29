@@ -1,12 +1,14 @@
 #include "app_controller.h"
 
 #include "app_state.h"
+#include "audio_driver.h"
 #include "config_service.h"
 
 namespace {
 
-constexpr uint32_t kBootSoundDelayMs = 900;
 constexpr uint32_t kFactoryResetHoldMs = 3000;
+constexpr uint32_t kAudioReadyAfterInitDelayMs = 1000;
+constexpr uint32_t kQrErrorResumeDelayMs = 250;
 
 } // namespace
 
@@ -28,32 +30,13 @@ void AppController::begin() {
         return handleQrAlbumScanned(albumId);
     });
 
-    if (!bootSoundTaskHandle_) {
-        xTaskCreatePinnedToCore(bootSoundTaskEntry,
-                                "BootSound_Task",
-                                2048,
-                                this,
-                                1,
-                                &bootSoundTaskHandle_,
-                                1);
-    }
-
     appStateStore().completeBoot();
 }
 
 void AppController::update() {
-    mediaService_.update();
     qrService_.update();
-}
-
-void AppController::bootSoundTaskEntry(void *context) {
-    static_cast<AppController *>(context)->runBootSoundTask();
-}
-
-void AppController::runBootSoundTask() {
-    vTaskDelay(pdMS_TO_TICKS(kBootSoundDelayMs));
-    mediaService_.playBootSound();
-    vTaskDelete(nullptr);
+    handlePendingQrAlbumStart();
+    mediaService_.update();
 }
 
 void AppController::handleButtonEvent(const ButtonEvent &event) {
@@ -92,5 +75,67 @@ bool AppController::handleQrAlbumScanned(const String &albumId) {
         return false;
     }
 
-    return mediaService_.playAlbum(albumId.c_str());
+    if (!pendingQrAlbumId_.isEmpty()) {
+        Serial.printf("App controller: QR album already pending, ignoring %s\n",
+                      albumId.c_str());
+        return false;
+    }
+
+    pendingQrAlbumId_ = albumId;
+    pendingQrAlbumStartAtMs_ = 0;
+    resumeScanningAfterQrError_ = false;
+    resumeScanningReadyAtMs_ = 0;
+
+    if (!appStateStore().transitionTo(AppState::Idle)) {
+        pendingQrAlbumId_ = "";
+        return false;
+    }
+
+    Serial.printf("App controller: queued QR album %s for playback after scan shutdown.\n",
+                  albumId.c_str());
+    return true;
+}
+
+void AppController::handlePendingQrAlbumStart() {
+    if (resumeScanningAfterQrError_) {
+        if (millis() >= resumeScanningReadyAtMs_ && !audioIsRunning()) {
+            resumeScanningAfterQrError_ = false;
+            resumeScanningReadyAtMs_ = 0;
+            (void)appStateStore().transitionTo(AppState::QrScan);
+        }
+    }
+
+    if (pendingQrAlbumId_.isEmpty()) {
+        return;
+    }
+
+    if (qrService_.isScanning()) {
+        return;
+    }
+
+    if (pendingQrAlbumStartAtMs_ == 0) {
+        if (!audioInit()) {
+            Serial.println("App controller: audio init before QR playback failed.");
+            pendingQrAlbumId_ = "";
+            resumeScanningAfterQrError_ = true;
+            resumeScanningReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
+            return;
+        }
+
+        pendingQrAlbumStartAtMs_ = millis() + kAudioReadyAfterInitDelayMs;
+        return;
+    }
+
+    if (millis() < pendingQrAlbumStartAtMs_) {
+        return;
+    }
+
+    const String albumId = pendingQrAlbumId_;
+    pendingQrAlbumId_ = "";
+    pendingQrAlbumStartAtMs_ = 0;
+
+    if (!mediaService_.playAlbum(albumId.c_str())) {
+        resumeScanningAfterQrError_ = true;
+        resumeScanningReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
+    }
 }
