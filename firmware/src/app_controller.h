@@ -16,6 +16,9 @@ class AppController {
   private:
     void handlePendingButtonEvents();
     void handleWifiConnected();
+    void handleWifiConnectionFailed();
+    void handlePendingWifiPortalResume();
+    void handleIdleDiagnostics();
     void handleScanAudioState();
     void handlePendingQrAlbumStart();
     void handleButtonEvent(const ButtonEvent &event);
@@ -35,4 +38,8 @@ class AppController {
     uint32_t scanStartChimeMuteReadyAtMs_ = 0;
     bool scanStartChimeQueued_ = false;
     bool scanSpeakerMutedForScan_ = false;
+    bool resumeWifiPortalAfterError_ = false;
+    bool wifiFailureSoundRunningSeen_ = false;
+    uint32_t wifiPortalResumeFallbackAtMs_ = 0;
+    uint32_t nextIdleLogAtMs_ = 0;
 };

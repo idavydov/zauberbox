@@ -10,6 +10,8 @@ constexpr uint32_t kFactoryResetHoldMs = 3000;
 constexpr uint32_t kAudioReadyAfterInitDelayMs = 1000;
 constexpr uint32_t kQrErrorResumeDelayMs = 250;
 constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
+constexpr uint32_t kWifiPortalResumeFallbackMs = 5000;
+constexpr uint32_t kIdleLogIntervalMs = 5000;
 
 } // namespace
 
@@ -30,6 +32,8 @@ void AppController::begin() {
     });
     wifiService_.begin([this]() {
         handleWifiConnected();
+    }, [this]() {
+        handleWifiConnectionFailed();
     });
 
     appStateStore().completeBoot();
@@ -39,8 +43,10 @@ void AppController::update() {
     handlePendingButtonEvents();
     wifiService_.update();
     qrService_.update();
+    handlePendingWifiPortalResume();
     handleScanAudioState();
     handlePendingQrAlbumStart();
+    handleIdleDiagnostics();
     mediaService_.update();
 }
 
@@ -98,6 +104,45 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
 
 void AppController::handleWifiConnected() {
     (void)mediaService_.playWifiConnectedSound();
+}
+
+void AppController::handleWifiConnectionFailed() {
+    (void)mediaService_.playUiSound(UiSound::Error);
+    resumeWifiPortalAfterError_ = true;
+    wifiFailureSoundRunningSeen_ = false;
+    wifiPortalResumeFallbackAtMs_ = millis() + kWifiPortalResumeFallbackMs;
+}
+
+void AppController::handlePendingWifiPortalResume() {
+    if (!resumeWifiPortalAfterError_) {
+        return;
+    }
+
+    if (audioIsRunning()) {
+        wifiFailureSoundRunningSeen_ = true;
+        return;
+    }
+
+    if (!wifiFailureSoundRunningSeen_ && millis() < wifiPortalResumeFallbackAtMs_) {
+        return;
+    }
+
+    resumeWifiPortalAfterError_ = false;
+    wifiFailureSoundRunningSeen_ = false;
+    wifiPortalResumeFallbackAtMs_ = 0;
+    (void)wifiService_.enable();
+}
+
+void AppController::handleIdleDiagnostics() {
+    if (appStateStore().current() != AppState::Idle) {
+        nextIdleLogAtMs_ = 0;
+        return;
+    }
+
+    if (nextIdleLogAtMs_ == 0 || millis() >= nextIdleLogAtMs_) {
+        Serial.println("App controller: Idle state active.");
+        nextIdleLogAtMs_ = millis() + kIdleLogIntervalMs;
+    }
 }
 
 bool AppController::handleQrAlbumScanned(const String &albumId) {
