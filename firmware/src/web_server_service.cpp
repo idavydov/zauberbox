@@ -1,6 +1,9 @@
 #include "web_server_service.h"
 
 #include <algorithm>
+#include <errno.h>
+#include <inttypes.h>
+#include <utime.h>
 
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -72,6 +75,30 @@ String asciiFallbackFileName(const String &value) {
     return fallback;
 }
 
+uint64_t fnv1a64Begin() {
+    return 1469598103934665603ULL;
+}
+
+uint64_t fnv1a64UpdateBytes(uint64_t hash, const uint8_t *data, size_t size) {
+    for (size_t i = 0; i < size; ++i) {
+        hash ^= data[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+uint64_t fnv1a64UpdateString(uint64_t hash, const String &value) {
+    return fnv1a64UpdateBytes(hash,
+                             reinterpret_cast<const uint8_t *>(value.c_str()),
+                             value.length());
+}
+
+uint64_t fnv1a64UpdateUint64(uint64_t hash, uint64_t value) {
+    return fnv1a64UpdateBytes(hash,
+                             reinterpret_cast<const uint8_t *>(&value),
+                             sizeof(value));
+}
+
 } // namespace
 
 void WebServerService::begin(MediaService *mediaService) {
@@ -121,6 +148,9 @@ void WebServerService::stopIfNeeded() {
 }
 
 void WebServerService::registerRoutes() {
+    static const char *kRequestHeaders[] = {"If-None-Match"};
+    server_.collectHeaders(kRequestHeaders, 1);
+
     server_.on("/", HTTP_GET, [this]() {
         handleIndex();
     });
@@ -252,6 +282,84 @@ String WebServerService::joinStoragePath(const String &directory, const String &
         path += fileName;
     }
     return path;
+}
+
+String WebServerService::buildFileEtag(const String &fileName, size_t fileSize, time_t lastWrite) {
+    uint64_t hash = fnv1a64Begin();
+    hash = fnv1a64UpdateString(hash, fileName);
+    hash = fnv1a64UpdateUint64(hash, static_cast<uint64_t>(fileSize));
+    hash = fnv1a64UpdateUint64(hash, static_cast<uint64_t>(lastWrite));
+
+    char buffer[24];
+    snprintf(buffer, sizeof(buffer), "\"%016" PRIx64 "\"", hash);
+    return String(buffer);
+}
+
+bool WebServerService::requestIfNoneMatchMatches(const String &requestHeader, const String &etag) {
+    if (requestHeader.isEmpty()) {
+        return false;
+    }
+    if (requestHeader == "*" || requestHeader == etag) {
+        return true;
+    }
+
+    int start = 0;
+    while (start < requestHeader.length()) {
+        int comma = requestHeader.indexOf(',', start);
+        if (comma < 0) {
+            comma = requestHeader.length();
+        }
+
+        String candidate = requestHeader.substring(start, comma);
+        candidate.trim();
+        if (candidate.startsWith("W/")) {
+            candidate.remove(0, 2);
+            candidate.trim();
+        }
+        if (candidate == etag) {
+            return true;
+        }
+
+        start = comma + 1;
+    }
+
+    return false;
+}
+
+bool WebServerService::parseClientLastModifiedMs(const String &value, time_t *outSeconds) {
+    if (!outSeconds || value.isEmpty()) {
+        return false;
+    }
+
+    char *end = nullptr;
+    errno = 0;
+    const unsigned long long millisSinceEpoch = strtoull(value.c_str(), &end, 10);
+    if (errno != 0 || end == value.c_str() || *end != '\0') {
+        return false;
+    }
+    if (millisSinceEpoch == 0) {
+        return false;
+    }
+
+    const time_t secondsSinceEpoch = static_cast<time_t>(millisSinceEpoch / 1000ULL);
+    if (secondsSinceEpoch <= 0) {
+        return false;
+    }
+
+    *outSeconds = secondsSinceEpoch;
+    return true;
+}
+
+bool WebServerService::applyFileTimestamp(const String &path, time_t lastWrite) {
+    if (path.isEmpty() || lastWrite <= 0) {
+        return false;
+    }
+
+    const String fullSystemPath = String(SD_MMC.mountpoint()) + path;
+    struct utimbuf times;
+    times.actime = lastWrite;
+    times.modtime = lastWrite;
+    return ::utime(fullSystemPath.c_str(), &times) == 0;
 }
 
 const char *WebServerService::mimeTypeForPath(const String &path) {
@@ -446,6 +554,15 @@ void WebServerService::handleGetFile() {
         return;
     }
 
+    const String etag = buildFileEtag(fileName, file.size(), file.getLastWrite());
+    server_.sendHeader("ETag", etag);
+    server_.sendHeader("Cache-Control", "private, max-age=0, must-revalidate");
+    if (requestIfNoneMatchMatches(server_.header("If-None-Match"), etag)) {
+        file.close();
+        server_.send(304);
+        return;
+    }
+
     const String fallbackName = asciiFallbackFileName(fileName);
     const String contentDisposition =
         String("attachment; filename=\"") + fallbackName +
@@ -585,6 +702,8 @@ void WebServerService::handleUploadData() {
             uploadFile_.close();
         }
         uploadTargetPath_ = "";
+        uploadTargetHasClientTimestamp_ = false;
+        uploadTargetLastWrite_ = 0;
 
         const String directory = server_.arg("path");
         const String uploadType = server_.arg("type");
@@ -607,6 +726,8 @@ void WebServerService::handleUploadData() {
         const String targetDir = joinStoragePath(directory);
         SD_MMC.mkdir(targetDir.c_str());
         uploadTargetPath_ = joinStoragePath(directory, filename);
+        uploadTargetHasClientTimestamp_ =
+            parseClientLastModifiedMs(server_.arg("last_modified_ms"), &uploadTargetLastWrite_);
         SD_MMC.remove(uploadTargetPath_.c_str());
         uploadFile_ = SD_MMC.open(uploadTargetPath_.c_str(), FILE_WRITE);
         if (!uploadFile_) {
@@ -627,12 +748,19 @@ void WebServerService::handleUploadData() {
         if (uploadFile_) {
             uploadFile_.close();
         }
+        if (!uploadFailed_ && uploadTargetHasClientTimestamp_ &&
+            !applyFileTimestamp(uploadTargetPath_, uploadTargetLastWrite_)) {
+            Serial.printf("Web server: failed to set mtime for %s\n",
+                          uploadTargetPath_.c_str());
+        }
         if (!uploadFailed_) {
             Serial.printf("Web server: uploaded %s (%u bytes)\n",
                           uploadTargetPath_.c_str(),
                           static_cast<unsigned>(upload.totalSize));
         }
         uploadTargetPath_ = "";
+        uploadTargetHasClientTimestamp_ = false;
+        uploadTargetLastWrite_ = 0;
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
         uploadFailed_ = true;
         uploadError_ = "Upload aborted";
@@ -643,5 +771,7 @@ void WebServerService::handleUploadData() {
             SD_MMC.remove(uploadTargetPath_.c_str());
         }
         uploadTargetPath_ = "";
+        uploadTargetHasClientTimestamp_ = false;
+        uploadTargetLastWrite_ = 0;
     }
 }

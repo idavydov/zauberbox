@@ -229,6 +229,9 @@ async function handleUpload(files, forcedType = null) {
     
     for (let file of files) {
         const type = forcedType || 'file';
+        const lastModifiedMs = typeof file.lastModified === 'number' && file.lastModified > 0
+            ? file.lastModified
+            : Date.now();
         
         if (type === 'cover') {
             file = await convertToJpeg(file);
@@ -236,10 +239,13 @@ async function handleUpload(files, forcedType = null) {
 
         const formData = new FormData();
         formData.append('file', file);
-        await fetchAPI(`/upload?path=${encodeURIComponent(state.currentPath)}&type=${encodeURIComponent(type)}`, {
+        await fetchAPI(
+            `/upload?path=${encodeURIComponent(state.currentPath)}&type=${encodeURIComponent(type)}&last_modified_ms=${encodeURIComponent(String(lastModifiedMs))}`,
+            {
             method: 'POST',
             body: formData
-        });
+            }
+        );
     }
     
     state.directories = await fetchAPI('/list');

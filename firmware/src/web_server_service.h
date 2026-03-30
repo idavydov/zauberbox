@@ -1,6 +1,7 @@
 #pragma once
 
 #include <FS.h>
+#include <time.h>
 #include <WebServer.h>
 
 #include "media_service.h"
@@ -21,6 +22,10 @@ class WebServerService {
     static String sanitizeUploadFileName(const String &value);
     static String baseNameForPath(const char *value);
     static String joinStoragePath(const String &directory, const String &fileName = "");
+    static String buildFileEtag(const String &fileName, size_t fileSize, time_t lastWrite);
+    static bool requestIfNoneMatchMatches(const String &requestHeader, const String &etag);
+    static bool parseClientLastModifiedMs(const String &value, time_t *outSeconds);
+    static bool applyFileTimestamp(const String &path, time_t lastWrite);
     static const char *mimeTypeForPath(const String &path);
     void sendJsonError(int code, const char *message);
     void handleIndex();
@@ -43,4 +48,6 @@ class WebServerService {
     String uploadTargetPath_;
     bool uploadFailed_ = false;
     String uploadError_;
+    bool uploadTargetHasClientTimestamp_ = false;
+    time_t uploadTargetLastWrite_ = 0;
 };
