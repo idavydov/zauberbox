@@ -8,6 +8,8 @@ namespace {
 constexpr char kWifiCredentialsPath[] = "/wifi.json";
 constexpr char kWebAuthConfigPath[] = "/web-auth.json";
 constexpr char kRuntimeConfigPath[] = "/config.json";
+constexpr char kDefaultWebUsername[] = "admin";
+constexpr char kDefaultWebPassword[] = "zauberbox";
 
 constexpr const char *kFactoryResetPaths[] = {
     kWifiCredentialsPath,
@@ -49,6 +51,44 @@ bool ConfigService::hasWifiCredentials() const {
     const String ssid = doc["ssid"].as<String>();
     const String password = doc["password"].as<String>();
     return !ssid.isEmpty() && !password.isEmpty();
+}
+
+WebAuthConfig ConfigService::loadWebAuthConfig() const {
+    WebAuthConfig config = {
+        .username = kDefaultWebUsername,
+        .password = kDefaultWebPassword,
+        .isDefault = true,
+    };
+
+    if (!LittleFS.exists(kWebAuthConfigPath)) {
+        return config;
+    }
+
+    File file = LittleFS.open(kWebAuthConfigPath, "r");
+    if (!file) {
+        Serial.println("Config service: failed to open /web-auth.json.");
+        return config;
+    }
+
+    StaticJsonDocument<192> doc;
+    const DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    if (error) {
+        Serial.println("Config service: /web-auth.json is invalid.");
+        return config;
+    }
+
+    const String username = doc["username"].as<String>();
+    const String password = doc["password"].as<String>();
+    if (username.isEmpty() || password.isEmpty()) {
+        Serial.println("Config service: /web-auth.json missing username/password.");
+        return config;
+    }
+
+    config.username = username;
+    config.password = password;
+    config.isDefault = false;
+    return config;
 }
 
 bool ConfigService::eraseWifiCredentials() const {

@@ -29,6 +29,7 @@ void AppController::begin() {
     }
 
     (void)mediaService_.begin();
+    webServerService_.begin(&mediaService_);
     (void)qrService_.begin([this](const String &albumId) {
         return handleQrAlbumScanned(albumId);
     });
@@ -44,6 +45,7 @@ void AppController::begin() {
 void AppController::update() {
     handlePendingButtonEvents();
     wifiService_.update();
+    webServerService_.update();
     qrService_.update();
     handlePendingWifiPortalResume();
     handleScanAudioState();

@@ -28,6 +28,7 @@ class MediaService {
     bool togglePause();
     bool stopAlbum();
     bool changeVolume(int8_t delta);
+    bool ensureStorageMounted();
 
     bool isStorageReady() const;
 

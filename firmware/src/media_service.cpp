@@ -171,6 +171,10 @@ bool MediaService::changeVolume(int8_t delta) {
     return audioSetVolume(static_cast<uint8_t>(clampedVolume));
 }
 
+bool MediaService::ensureStorageMounted() {
+    return mountStorage();
+}
+
 bool MediaService::isStorageReady() const {
     return storageReady_;
 }

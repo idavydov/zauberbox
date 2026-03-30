@@ -6,6 +6,7 @@
 #include "led_controller.h"
 #include "media_service.h"
 #include "qr_service.h"
+#include "web_server_service.h"
 #include "wifi_service.h"
 
 class AppController {
@@ -27,6 +28,7 @@ class AppController {
     LedController ledController_;
     MediaService mediaService_;
     QrService qrService_;
+    WebServerService webServerService_;
     WifiService wifiService_;
     bool lastScanning_ = false;
     String pendingQrAlbumId_;

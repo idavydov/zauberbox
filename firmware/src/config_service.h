@@ -8,10 +8,21 @@ struct FactoryResetReport {
     size_t failedCount;
 };
 
+struct WebAuthConfig {
+    String username;
+    String password;
+    bool isDefault;
+
+    bool isValid() const {
+        return !username.isEmpty() && !password.isEmpty();
+    }
+};
+
 class ConfigService {
   public:
     void begin();
     bool hasWifiCredentials() const;
+    WebAuthConfig loadWebAuthConfig() const;
     bool eraseWifiCredentials() const;
     FactoryResetReport eraseFactoryData() const;
 
