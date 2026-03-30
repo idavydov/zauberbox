@@ -26,7 +26,7 @@ constexpr int kCameraPinHref = 1;
 constexpr int kCameraPinPclk = 44;
 constexpr uint32_t kCameraRetryDelayMs = 1000;
 constexpr BaseType_t kQrDecodeCore = 1;
-constexpr uint32_t kQrScanTimeoutMs = 30000;
+constexpr uint32_t kQrScanTimeoutMs = 180000;
 constexpr uint32_t kDuplicatePayloadWindowMs = 1500;
 
 CameraPins makeCameraPins() {
