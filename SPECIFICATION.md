@@ -84,6 +84,13 @@ The firmware behavior should be modeled as explicit states.
 - In this mode the device starts a Wi-Fi access point and serves the
   provisioning UI.
 - The access point may be open for initial provisioning.
+- After credentials are submitted, the device should attempt to connect to the
+  configured STA Wi-Fi without rebooting .
+- If connection succeeds, the device exits `Wi-Fi Portal` and returns to the
+  `Idle` mode with Wi-Fi enabled.
+- If connection does not succeed within the configured retry window or attempt
+  budget, the device should play an error sound, wipe saved Wi-Fi credentials,
+  and remain in or return to `Wi-Fi Portal`.
 - After 5 minutes of inactivity, defined as no connected client and no active
   web requests, the access point switches off.
 - While in this state, the LED shows a breathing animation distinct from all
@@ -184,6 +191,9 @@ Future battery-aware optimizations may change the playback LED pattern.
 - The user explicitly enables Wi-Fi by pressing the Wi-Fi trigger control.
 - If no Wi-Fi network is configured when Wi-Fi is enabled, the device enters
   `Wi-Fi Portal` and serves the provisioning UI from the access point.
+- Saving provisioning credentials must not require a device reboot in the
+  normal case; the preferred behavior is immediate connection attempt in the
+  current session.
 - Once connected to Wi-Fi, the device should serve the normal application UI on
   `/`.
 - The normal application UI should be password protected.
