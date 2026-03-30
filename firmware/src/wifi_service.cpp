@@ -41,19 +41,15 @@ bool WifiService::enable() {
 
     enabled_ = true;
     awaitingPortalCredentials_ = false;
-    portalConnectInProgress_ = false;
-    portalConnectStartedAtMs_ = 0;
-    nextPortalConnectLogAtMs_ = 0;
+    connectAttemptInProgress_ = false;
+    connectAttemptFromPortal_ = false;
+    connectAttemptStartedAtMs_ = 0;
+    nextConnectLogAtMs_ = 0;
     const bool hasCredentials = configService().hasWifiCredentials();
     Serial.printf("Wi-Fi service: enabling (%s credentials).\n",
                   hasCredentials ? "with" : "without");
     if (hasCredentials) {
-        WiFi.disconnect(false);
-        WiFi.mode(WIFI_OFF);
-        WiFi.setHostname(kWifiStaHostname);
-        appStateStore().syncWifiMode(WifiMode::Connecting);
-        lastMode_ = WifiMode::Connecting;
-        manager_.forzarReconexion();
+        beginConnectionAttempt("using stored credentials");
     } else {
         Serial.println("Wi-Fi service: opening provisioning portal.");
         awaitingPortalCredentials_ = true;
@@ -65,6 +61,19 @@ bool WifiService::enable() {
     return true;
 }
 
+void WifiService::resumePortalAfterFailure() {
+    enabled_ = true;
+    awaitingPortalCredentials_ = true;
+    connectAttemptInProgress_ = false;
+    connectAttemptFromPortal_ = false;
+    connectAttemptStartedAtMs_ = 0;
+    nextConnectLogAtMs_ = 0;
+    Serial.println("Wi-Fi service: reopening provisioning portal.");
+    appStateStore().syncWifiMode(WifiMode::PortalActive);
+    lastMode_ = WifiMode::PortalActive;
+    manager_.openPortal();
+}
+
 void WifiService::disable() {
     if (!enabled_ && lastMode_ == WifiMode::Disabled) {
         return;
@@ -72,9 +81,10 @@ void WifiService::disable() {
 
     Serial.println("Wi-Fi service: disabling.");
     awaitingPortalCredentials_ = false;
-    portalConnectInProgress_ = false;
-    portalConnectStartedAtMs_ = 0;
-    nextPortalConnectLogAtMs_ = 0;
+    connectAttemptInProgress_ = false;
+    connectAttemptFromPortal_ = false;
+    connectAttemptStartedAtMs_ = 0;
+    nextConnectLogAtMs_ = 0;
 
     manager_.closePortal();
     MDNS.end();
@@ -103,25 +113,26 @@ void WifiService::update() {
         beginPortalConnectionAttempt();
     }
 
-    if (portalConnectInProgress_) {
+    if (connectAttemptInProgress_) {
         if (manager_.isConnected()) {
             Serial.printf("Wi-Fi service: STA connection established after %lu ms.\n",
-                          static_cast<unsigned long>(millis() - portalConnectStartedAtMs_));
-            portalConnectInProgress_ = false;
-            portalConnectStartedAtMs_ = 0;
-            nextPortalConnectLogAtMs_ = 0;
+                          static_cast<unsigned long>(millis() - connectAttemptStartedAtMs_));
+            connectAttemptInProgress_ = false;
+            connectAttemptFromPortal_ = false;
+            connectAttemptStartedAtMs_ = 0;
+            nextConnectLogAtMs_ = 0;
             syncAppState();
             return;
         }
-        if (millis() - portalConnectStartedAtMs_ >= kPortalConnectTimeoutMs) {
-            failPortalConnectionAttempt();
+        if (millis() - connectAttemptStartedAtMs_ >= kPortalConnectTimeoutMs) {
+            failConnectionAttempt();
             return;
         }
-        if (nextPortalConnectLogAtMs_ == 0 || millis() >= nextPortalConnectLogAtMs_) {
+        if (nextConnectLogAtMs_ == 0 || millis() >= nextConnectLogAtMs_) {
             Serial.printf("Wi-Fi service: still connecting... %lu/%lu ms elapsed.\n",
-                          static_cast<unsigned long>(millis() - portalConnectStartedAtMs_),
+                          static_cast<unsigned long>(millis() - connectAttemptStartedAtMs_),
                           static_cast<unsigned long>(kPortalConnectTimeoutMs));
-            nextPortalConnectLogAtMs_ = millis() + kPortalConnectLogIntervalMs;
+            nextConnectLogAtMs_ = millis() + kPortalConnectLogIntervalMs;
         }
 
         syncAppState();
@@ -162,19 +173,18 @@ void WifiService::syncAppState() {
 
     appStateStore().syncWifiMode(currentMode);
     if (currentMode == WifiMode::Connected && onConnected_) {
+        (void)manager_.setConnectedOnce(true);
         onConnected_();
     }
     lastMode_ = currentMode;
 }
 
-void WifiService::beginPortalConnectionAttempt() {
-    awaitingPortalCredentials_ = false;
-    portalConnectInProgress_ = true;
-    portalConnectStartedAtMs_ = millis();
-    nextPortalConnectLogAtMs_ = portalConnectStartedAtMs_;
+void WifiService::beginConnectionAttempt(const char *reason) {
+    connectAttemptInProgress_ = true;
+    connectAttemptStartedAtMs_ = millis();
+    nextConnectLogAtMs_ = connectAttemptStartedAtMs_;
 
-    Serial.println("Wi-Fi service: credentials saved in portal, attempting STA connection.");
-    manager_.closePortal();
+    Serial.printf("Wi-Fi service: %s, attempting STA connection.\n", reason);
     WiFi.disconnect(false);
     WiFi.mode(WIFI_OFF);
     WiFi.setHostname(kWifiStaHostname);
@@ -183,13 +193,28 @@ void WifiService::beginPortalConnectionAttempt() {
     manager_.forzarReconexion();
 }
 
-void WifiService::failPortalConnectionAttempt() {
-    Serial.printf("Wi-Fi service: portal connection attempt timed out after %lu ms, reopening portal.\n",
-                  static_cast<unsigned long>(millis() - portalConnectStartedAtMs_));
-    portalConnectInProgress_ = false;
-    portalConnectStartedAtMs_ = 0;
-    nextPortalConnectLogAtMs_ = 0;
-    manager_.eraseCredentials();
+void WifiService::beginPortalConnectionAttempt() {
+    awaitingPortalCredentials_ = false;
+    connectAttemptFromPortal_ = true;
+    manager_.closePortal();
+    beginConnectionAttempt("credentials saved in portal");
+}
+
+void WifiService::failConnectionAttempt() {
+    Serial.printf("Wi-Fi service: connection attempt timed out after %lu ms.\n",
+                  static_cast<unsigned long>(millis() - connectAttemptStartedAtMs_));
+    const bool reopenPortal = connectAttemptFromPortal_ && !manager_.hasConnectedOnce();
+    connectAttemptInProgress_ = false;
+    connectAttemptStartedAtMs_ = 0;
+    nextConnectLogAtMs_ = 0;
+
+    if (reopenPortal) {
+        Serial.println("Wi-Fi service: unvalidated portal credentials timed out, erasing them.");
+        manager_.eraseCredentials();
+    } else {
+        Serial.println("Wi-Fi service: keeping stored credentials and disabling Wi-Fi.");
+    }
+    connectAttemptFromPortal_ = false;
     MDNS.end();
     WiFi.disconnect(true);
     WiFi.softAPdisconnect(true);
@@ -198,6 +223,6 @@ void WifiService::failPortalConnectionAttempt() {
     appStateStore().syncWifiMode(WifiMode::Disabled);
     lastMode_ = WifiMode::Disabled;
     if (onConnectionFailed_) {
-        onConnectionFailed_();
+        onConnectionFailed_(reopenPortal);
     }
 }

@@ -17,7 +17,7 @@ class AppController {
   private:
     void handlePendingButtonEvents();
     void handleWifiConnected();
-    void handleWifiConnectionFailed();
+    void handleWifiConnectionFailed(bool reopenPortal);
     void handlePendingWifiPortalResume();
     void handleScanAudioState();
     void handleQuietStateAudioOutput();

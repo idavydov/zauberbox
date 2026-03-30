@@ -35,8 +35,8 @@ void AppController::begin() {
     });
     wifiService_.begin([this]() {
         handleWifiConnected();
-    }, [this]() {
-        handleWifiConnectionFailed();
+    }, [this](bool reopenPortal) {
+        handleWifiConnectionFailed(reopenPortal);
     });
 
     appStateStore().completeBoot();
@@ -133,11 +133,11 @@ void AppController::handleWifiConnected() {
     }
 }
 
-void AppController::handleWifiConnectionFailed() {
+void AppController::handleWifiConnectionFailed(bool reopenPortal) {
     if (mediaService_.playUiSound(UiSound::Error)) {
         noteUiSoundQueued();
     }
-    resumeWifiPortalAfterError_ = true;
+    resumeWifiPortalAfterError_ = reopenPortal;
     wifiFailureSoundRunningSeen_ = false;
     wifiPortalResumeFallbackAtMs_ = millis() + kWifiPortalResumeFallbackMs;
 }
@@ -159,7 +159,7 @@ void AppController::handlePendingWifiPortalResume() {
     resumeWifiPortalAfterError_ = false;
     wifiFailureSoundRunningSeen_ = false;
     wifiPortalResumeFallbackAtMs_ = 0;
-    (void)wifiService_.enable();
+    wifiService_.resumePortalAfterFailure();
 }
 
 bool AppController::handleQrAlbumScanned(const String &albumId) {

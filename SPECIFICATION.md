@@ -95,8 +95,18 @@ The firmware behavior should be modeled as explicit states.
 - If connection succeeds, the device exits `Wi-Fi Portal` and returns to the
   `Idle` mode with Wi-Fi enabled.
 - If connection does not succeed within the configured retry window or attempt
-  budget, the device should play an error sound, wipe saved Wi-Fi credentials,
-  and remain in or return to `Wi-Fi Portal`.
+  budget, the device should play an error sound.
+- If the failed attempt came from newly provisioned credentials that have not
+  yet connected successfully once, the device should wipe those credentials and
+  remain in or return to `Wi-Fi Portal`.
+- If the failed attempt used credentials that have already connected
+  successfully at least once, the device should keep those credentials and
+  return to normal runtime with Wi-Fi disabled.
+- Saved Wi-Fi credentials should be wiped only for a provisioning attempt that
+  has not yet produced a successful STA connection.
+- Once a set of Wi-Fi credentials has connected successfully at least once, the
+  device must not wipe those credentials automatically just because a later
+  connection attempt or reconnect fails.
 - After 5 minutes of inactivity, defined as no connected client and no active
   web requests, the access point switches off.
 - While in this state, the LED shows a breathing animation distinct from all
@@ -201,6 +211,11 @@ Future battery-aware optimizations may change the playback LED pattern.
 - The user explicitly enables Wi-Fi by pressing the Wi-Fi trigger control.
 - If no Wi-Fi network is configured when Wi-Fi is enabled, the device enters
   `Wi-Fi Portal` and serves the provisioning UI from the access point.
+- If Wi-Fi is enabled and saved credentials exist, the device should attempt a
+  bounded STA connection in the current session rather than retrying forever.
+- If that bounded attempt fails with previously validated credentials, the
+  device should play an error sound and return to normal runtime with Wi-Fi
+  disabled.
 - Saving provisioning credentials must not require a device reboot in the
   normal case; the preferred behavior is immediate connection attempt in the
   current session.
