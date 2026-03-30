@@ -204,5 +204,7 @@ The lowest-effort next R&D experiment is:
 - `sdkconfig.waveshare_s3_audio` is generated
 - persistent config changes belong in:
   - `firmware/sdkconfig.defaults`
-- the user observed upload/log instability earlier during QR bring-up
+- the earlier upload/log instability during QR bring-up was tied to driving
+  `EXIO6` LOW; `EXIO6` is the camera routing select (`HIGH = TX/RX`,
+  `LOW = USB D+/D-`), and the current runtime keeps it HIGH
 - keep future diagnostics narrow and one-variable-at-a-time

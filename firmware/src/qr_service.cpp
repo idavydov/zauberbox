@@ -321,9 +321,7 @@ void QrService::disableCameraHardware() const {
     }
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    // Board-specific workaround: vendor examples describe EXIO6 as switching the
-    // camera between the TX/RX path (HIGH) and the USB D+/D- path (LOW). On the
-    // current hardware/firmware combination, driving EXIO6 LOW after leaving
-    // QrScan makes USB logging/flashing unstable. Keep EXIO6 HIGH and only cut
-    // camera power here until that interaction is understood.
+    // EXIO6 selects the board's camera routing: HIGH uses the TX/RX path,
+    // LOW switches the camera to the USB D+/D- path. Normal runtime keeps the
+    // camera on the TX/RX path, so scan exit only cuts camera power here.
 }

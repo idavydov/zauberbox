@@ -61,11 +61,12 @@ The firmware behavior should be modeled as explicit states.
   chime may be played after a short delay.
 - After the startup chime, speaker output may be disabled while active scanning
   continues, to reduce interference noise.
-- On current hardware, leaving `EXIO6` HIGH is a required stability
-  workaround. Vendor board examples describe `EXIO6` as switching the camera
-  between the `TX/RX` path (`HIGH`) and the USB `D+/D-` path (`LOW`). Exiting
-  `QR Scan` should power the camera down, but should not currently drive
-  `EXIO6` LOW until that interaction is understood and fixed.
+- On this board, `EXIO6` selects the camera routing:
+  - `HIGH`: camera on the `TX/RX` path
+  - `LOW`: camera on the USB `D+/D-` path
+- Normal QR operation should keep `EXIO6` HIGH.
+- Exiting `QR Scan` should power the camera down, but does not need to switch
+  the camera to the USB path.
 - The camera continuously looks for a QR code.
 - If no QR code is detected for the configured timeout, the device enters
   `Idle`.
@@ -174,9 +175,9 @@ When transitioning from active scanning to QR error or album playback, the
 camera should be stopped before initializing audio for the next sound or media
 playback path.
 
-The current board workaround still powers the camera down on scan exit, but
-keeps `EXIO6` HIGH because driving it LOW has been observed to break USB
-logging/flashing stability on this board.
+On this board, scan exit powers the camera down while leaving `EXIO6` HIGH,
+which keeps the camera on the normal `TX/RX` routing rather than switching it
+to the USB `D+/D-` path.
 
 ## LED Behavior
 
