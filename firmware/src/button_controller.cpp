@@ -28,6 +28,8 @@ const char *buttonName(ButtonId buttonId) {
 
 const char *pressKindName(ButtonPressKind pressKind) {
     switch (pressKind) {
+        case ButtonPressKind::PressDown:
+            return "down";
         case ButtonPressKind::ShortPress:
             return "short";
         case ButtonPressKind::LongPress:
@@ -151,6 +153,12 @@ void ButtonController::runTask() {
                 if (button.stablePressed) {
                     button.pressedAtMs = now;
                     button.longDispatched = false;
+                    if (button.buttonId == ButtonId::Boot) {
+                        dispatchEvent({
+                            .buttonId = button.buttonId,
+                            .pressKind = ButtonPressKind::PressDown,
+                        });
+                    }
                 } else if (!button.longDispatched) {
                     dispatchEvent({
                         .buttonId = button.buttonId,

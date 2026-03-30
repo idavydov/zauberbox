@@ -11,6 +11,7 @@ enum class ButtonId : uint8_t {
 };
 
 enum class ButtonPressKind : uint8_t {
+    PressDown,
     ShortPress,
     LongPress,
 };

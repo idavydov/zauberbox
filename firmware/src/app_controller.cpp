@@ -62,13 +62,20 @@ void AppController::handlePendingButtonEvents() {
 
 void AppController::handleButtonEvent(const ButtonEvent &event) {
     if (event.buttonId == ButtonId::Boot) {
-        Serial.printf("App controller: BOOT button in state %s, Wi-Fi %s\n",
-                      AppStateStore::stateName(appStateStore().current()),
-                      wifiService_.isEnabled() ? "enabled" : "disabled");
-        if (wifiService_.isEnabled()) {
-            wifiService_.disable();
-        } else {
-            (void)wifiService_.enable();
+        if (event.pressKind == ButtonPressKind::PressDown) {
+            (void)mediaService_.playUiSound(UiSound::Button);
+            return;
+        }
+        if (event.pressKind == ButtonPressKind::ShortPress) {
+            Serial.printf("App controller: BOOT button in state %s, Wi-Fi %s\n",
+                          AppStateStore::stateName(appStateStore().current()),
+                          wifiService_.isEnabled() ? "enabled" : "disabled");
+            if (wifiService_.isEnabled()) {
+                wifiService_.disable();
+            } else {
+                (void)wifiService_.enable();
+            }
+            return;
         }
         return;
     }
