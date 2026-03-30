@@ -29,6 +29,7 @@ class WifiService {
     bool awaitingPortalCredentials_ = false;
     bool portalConnectInProgress_ = false;
     uint32_t portalConnectStartedAtMs_ = 0;
+    uint32_t nextPortalConnectLogAtMs_ = 0;
     WifiMode lastMode_ = WifiMode::Disabled;
     WifiConnectedCallback onConnected_ = nullptr;
     WifiConnectionFailedCallback onConnectionFailed_ = nullptr;
