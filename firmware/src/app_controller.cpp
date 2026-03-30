@@ -13,7 +13,6 @@ constexpr uint32_t kAudioReadyAfterInitDelayMs = 1000;
 constexpr uint32_t kQrErrorResumeDelayMs = 250;
 constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
 constexpr uint32_t kWifiPortalResumeFallbackMs = 5000;
-constexpr uint32_t kIdleLogIntervalMs = 5000;
 constexpr char kWifiMdnsHostname[] = "zauberbox";
 
 } // namespace
@@ -49,7 +48,6 @@ void AppController::update() {
     handlePendingWifiPortalResume();
     handleScanAudioState();
     handlePendingQrAlbumStart();
-    handleIdleDiagnostics();
     mediaService_.update();
 }
 
@@ -147,18 +145,6 @@ void AppController::handlePendingWifiPortalResume() {
     wifiFailureSoundRunningSeen_ = false;
     wifiPortalResumeFallbackAtMs_ = 0;
     (void)wifiService_.enable();
-}
-
-void AppController::handleIdleDiagnostics() {
-    if (appStateStore().current() != AppState::Idle) {
-        nextIdleLogAtMs_ = 0;
-        return;
-    }
-
-    if (nextIdleLogAtMs_ == 0 || millis() >= nextIdleLogAtMs_) {
-        Serial.println("App controller: Idle state active.");
-        nextIdleLogAtMs_ = millis() + kIdleLogIntervalMs;
-    }
 }
 
 bool AppController::handleQrAlbumScanned(const String &albumId) {

@@ -18,7 +18,6 @@ class AppController {
     void handleWifiConnected();
     void handleWifiConnectionFailed();
     void handlePendingWifiPortalResume();
-    void handleIdleDiagnostics();
     void handleScanAudioState();
     void handlePendingQrAlbumStart();
     void handleButtonEvent(const ButtonEvent &event);
@@ -41,5 +40,4 @@ class AppController {
     bool resumeWifiPortalAfterError_ = false;
     bool wifiFailureSoundRunningSeen_ = false;
     uint32_t wifiPortalResumeFallbackAtMs_ = 0;
-    uint32_t nextIdleLogAtMs_ = 0;
 };
