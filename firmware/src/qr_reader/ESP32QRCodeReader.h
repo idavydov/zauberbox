@@ -31,10 +31,14 @@ struct QRCodeData
 
 class ESP32QRCodeReader
 {
+  friend void qrCodeDetectTask(void *taskData);
+
 private:
   TaskHandle_t qrCodeTaskHandler;
   CameraPins pins;
   framesize_t frameSize;
+  volatile bool stopRequested = false;
+  volatile bool taskRunning = false;
 
 public:
   camera_config_t cameraConfig;

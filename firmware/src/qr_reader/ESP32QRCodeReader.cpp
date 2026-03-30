@@ -84,6 +84,7 @@ void dumpData(const struct quirc_data *data)
 void qrCodeDetectTask(void *taskData)
 {
   ESP32QRCodeReader *self = (ESP32QRCodeReader *)taskData;
+  self->taskRunning = true;
   camera_config_t camera_config = self->cameraConfig;
   if (camera_config.frame_size > FRAMESIZE_SVGA)
   {
@@ -91,8 +92,9 @@ void qrCodeDetectTask(void *taskData)
     {
       Serial.println("Camera Size err");
     }
-    vTaskDelete(NULL);
-    return;
+      self->taskRunning = false;
+      vTaskDelete(NULL);
+      return;
   }
 
   struct quirc *q = NULL;
@@ -113,11 +115,12 @@ void qrCodeDetectTask(void *taskData)
     {
       Serial.print("can't create quirc object\r\n");
     }
+    self->taskRunning = false;
     vTaskDelete(NULL);
     return;
   }
 
-  while (true)
+  while (!self->stopRequested)
   {
 
     if (self->debug)
@@ -127,6 +130,10 @@ void qrCodeDetectTask(void *taskData)
       Serial.print("begin camera get fb\r\n");
     }
     vTaskDelay(100 / portTICK_PERIOD_MS);
+    if (self->stopRequested)
+    {
+      break;
+    }
 
     fb = esp_camera_fb_get();
     if (!fb)
@@ -136,6 +143,14 @@ void qrCodeDetectTask(void *taskData)
         Serial.println("Camera capture failed");
       }
       continue;
+    }
+
+    if (self->stopRequested)
+    {
+      esp_camera_fb_return(fb);
+      fb = NULL;
+      image = NULL;
+      break;
     }
 
     if (old_width != fb->width || old_height != fb->height)
@@ -244,7 +259,15 @@ void qrCodeDetectTask(void *taskData)
     fb = NULL;
     image = NULL;
   }
+
+  if (fb)
+  {
+    esp_camera_fb_return(fb);
+    fb = NULL;
+  }
   quirc_destroy(q);
+  self->qrCodeTaskHandler = NULL;
+  self->taskRunning = false;
   vTaskDelete(NULL);
 }
 
@@ -257,6 +280,7 @@ void ESP32QRCodeReader::beginOnCore(BaseType_t core)
 {
   if (!begun)
   {
+    stopRequested = false;
     xTaskCreatePinnedToCore(qrCodeDetectTask, "qrCodeDetectTask", QR_CODE_READER_STACK_SIZE, this, QR_CODE_READER_TASK_PRIORITY, &qrCodeTaskHandler, core);
     begun = true;
   }
@@ -271,14 +295,23 @@ void ESP32QRCodeReader::end()
 {
   if (begun)
   {
-    TaskHandle_t tmpTask = qrCodeTaskHandler;
-    if (qrCodeTaskHandler != NULL)
+    stopRequested = true;
+    unsigned long waitStartedAt = millis();
+    while (taskRunning && (millis() - waitStartedAt) < 1000)
     {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if (taskRunning && qrCodeTaskHandler != NULL)
+    {
+      Serial.println("ESP32QRCodeReader: forcing QR task shutdown after timeout.");
+      vTaskDelete(qrCodeTaskHandler);
       qrCodeTaskHandler = NULL;
-      vTaskDelete(tmpTask);
+      taskRunning = false;
     }
   }
   begun = false;
+  stopRequested = false;
 }
 
 void ESP32QRCodeReader::setDebug(bool on)
