@@ -20,9 +20,12 @@ class AppController {
     void handleWifiConnectionFailed();
     void handlePendingWifiPortalResume();
     void handleScanAudioState();
+    void handleQuietStateAudioOutput();
     void handlePendingQrAlbumStart();
     void handleButtonEvent(const ButtonEvent &event);
     bool handleQrAlbumScanned(const String &albumId);
+    void noteUiSoundQueued(uint32_t holdMs = 250);
+    bool queueScanUiSound(UiSound sound);
 
     ButtonController buttonController_;
     LedController ledController_;
@@ -39,7 +42,12 @@ class AppController {
     uint32_t scanStartChimeMuteReadyAtMs_ = 0;
     bool scanStartChimeQueued_ = false;
     bool scanSpeakerMutedForScan_ = false;
+    bool pendingScanUiSound_ = false;
+    UiSound pendingScanUiSoundType_ = UiSound::Button;
+    uint32_t pendingScanUiSoundReadyAtMs_ = 0;
     bool resumeWifiPortalAfterError_ = false;
     bool wifiFailureSoundRunningSeen_ = false;
     uint32_t wifiPortalResumeFallbackAtMs_ = 0;
+    bool quietStateSpeakerMuted_ = false;
+    uint32_t uiSoundMuteBlockUntilMs_ = 0;
 };

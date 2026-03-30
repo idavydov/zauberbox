@@ -53,6 +53,7 @@ AudioPlaybackFinishedCallback gPlaybackFinishedCallback = nullptr;
 bool gSuppressFinishedCallback = false;
 uint8_t gCurrentVolume = kPlaybackVolume;
 bool gAudioInitialized = false;
+bool gSpeakerEnabled = false;
 
 fs::FS *filesystemForStorage(AudioStorage storage) {
     switch (storage) {
@@ -133,6 +134,10 @@ bool initEs8311() {
 }
 
 bool enableSpeaker() {
+    if (gSpeakerEnabled) {
+        return true;
+    }
+
     if (!ioExpanderPinMode(kIoExpanderSpeakerEnablePin, OUTPUT) ||
         !ioExpanderDigitalWrite(kIoExpanderSpeakerEnablePin, HIGH)) {
         Serial.println("Speaker enable via I/O expander failed.");
@@ -140,11 +145,16 @@ bool enableSpeaker() {
     }
 
     delay(50);
+    gSpeakerEnabled = true;
     Serial.println("Speaker enabled via TCA9555 EXIO8.");
     return true;
 }
 
 bool disableSpeaker() {
+    if (!gSpeakerEnabled) {
+        return true;
+    }
+
     if (!ioExpanderPinMode(kIoExpanderSpeakerEnablePin, OUTPUT) ||
         !ioExpanderDigitalWrite(kIoExpanderSpeakerEnablePin, LOW)) {
         Serial.println("Speaker disable via I/O expander failed.");
@@ -152,6 +162,7 @@ bool disableSpeaker() {
     }
 
     delay(20);
+    gSpeakerEnabled = false;
     Serial.println("Speaker disabled via TCA9555 EXIO8.");
     return true;
 }

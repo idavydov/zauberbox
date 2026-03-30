@@ -49,6 +49,7 @@ void AppController::update() {
     qrService_.update();
     handlePendingWifiPortalResume();
     handleScanAudioState();
+    handleQuietStateAudioOutput();
     handlePendingQrAlbumStart();
     mediaService_.update();
 }
@@ -63,7 +64,12 @@ void AppController::handlePendingButtonEvents() {
 void AppController::handleButtonEvent(const ButtonEvent &event) {
     if (event.buttonId == ButtonId::Boot) {
         if (event.pressKind == ButtonPressKind::PressDown) {
-            (void)mediaService_.playUiSound(UiSound::Button);
+            if (queueScanUiSound(UiSound::Button)) {
+                return;
+            }
+            if (mediaService_.playUiSound(UiSound::Button)) {
+                noteUiSoundQueued();
+            }
             return;
         }
         if (event.pressKind == ButtonPressKind::ShortPress) {
@@ -119,11 +125,18 @@ void AppController::handleWifiConnected() {
     } else {
         Serial.printf("App controller: mDNS start failed for %s.local\n", kWifiMdnsHostname);
     }
-    (void)mediaService_.playWifiConnectedSound();
+    if (queueScanUiSound(UiSound::WifiConnected)) {
+        return;
+    }
+    if (mediaService_.playWifiConnectedSound()) {
+        noteUiSoundQueued();
+    }
 }
 
 void AppController::handleWifiConnectionFailed() {
-    (void)mediaService_.playUiSound(UiSound::Error);
+    if (mediaService_.playUiSound(UiSound::Error)) {
+        noteUiSoundQueued();
+    }
     resumeWifiPortalAfterError_ = true;
     wifiFailureSoundRunningSeen_ = false;
     wifiPortalResumeFallbackAtMs_ = millis() + kWifiPortalResumeFallbackMs;
@@ -175,6 +188,21 @@ bool AppController::handleQrAlbumScanned(const String &albumId) {
     return true;
 }
 
+void AppController::noteUiSoundQueued(uint32_t holdMs) {
+    uiSoundMuteBlockUntilMs_ = millis() + holdMs;
+}
+
+bool AppController::queueScanUiSound(UiSound sound) {
+    if (appStateStore().current() != AppState::QrScan || !qrService_.isScanning() || !pendingQrAlbumId_.isEmpty()) {
+        return false;
+    }
+
+    pendingScanUiSound_ = true;
+    pendingScanUiSoundType_ = sound;
+    pendingScanUiSoundReadyAtMs_ = 1;
+    return true;
+}
+
 void AppController::handleScanAudioState() {
     const bool scanning = qrService_.isScanning();
     if (scanning != lastScanning_) {
@@ -183,13 +211,46 @@ void AppController::handleScanAudioState() {
         scanStartChimeMuteReadyAtMs_ = 0;
         scanStartChimeQueued_ = false;
         scanSpeakerMutedForScan_ = false;
+        pendingScanUiSound_ = false;
+        pendingScanUiSoundReadyAtMs_ = 0;
     }
 
     if (!scanning || appStateStore().current() != AppState::QrScan || !pendingQrAlbumId_.isEmpty()) {
         return;
     }
 
+    if (pendingScanUiSound_) {
+        if (pendingScanUiSoundReadyAtMs_ == 1) {
+            if (!audioInit()) {
+                Serial.println("App controller: audio init for scan-time UI sound failed.");
+                return;
+            }
+            pendingScanUiSoundReadyAtMs_ = millis() + kAudioReadyAfterInitDelayMs;
+            return;
+        }
+
+        if (millis() < pendingScanUiSoundReadyAtMs_) {
+            return;
+        }
+
+        if (!mediaService_.playUiSound(pendingScanUiSoundType_)) {
+            Serial.println("App controller: failed to queue scan-time UI sound.");
+            pendingScanUiSound_ = false;
+            pendingScanUiSoundReadyAtMs_ = 0;
+            (void)audioDisableOutputForCameraScan();
+            return;
+        }
+
+        pendingScanUiSound_ = false;
+        pendingScanUiSoundReadyAtMs_ = 0;
+        noteUiSoundQueued(kScanStartSpeakerHoldMs);
+        return;
+    }
+
     if (scanSpeakerMutedForScan_) {
+        if (!audioIsRunning() && millis() >= uiSoundMuteBlockUntilMs_) {
+            (void)audioDisableOutputForCameraScan();
+        }
         return;
     }
 
@@ -222,6 +283,34 @@ void AppController::handleScanAudioState() {
         scanSpeakerMutedForScan_ = audioDisableOutputForCameraScan();
         scanStartChimeMuteReadyAtMs_ = 0;
     }
+}
+
+void AppController::handleQuietStateAudioOutput() {
+    const AppState state = appStateStore().current();
+    const bool quietState =
+        state == AppState::Idle ||
+        state == AppState::Paused ||
+        state == AppState::WifiPortal;
+
+    if (!quietState) {
+        quietStateSpeakerMuted_ = false;
+        return;
+    }
+
+    if (audioIsRunning()) {
+        quietStateSpeakerMuted_ = false;
+        return;
+    }
+
+    if (quietStateSpeakerMuted_) {
+        return;
+    }
+
+    if (millis() < uiSoundMuteBlockUntilMs_) {
+        return;
+    }
+
+    quietStateSpeakerMuted_ = audioDisableOutputForCameraScan();
 }
 
 void AppController::handlePendingQrAlbumStart() {
