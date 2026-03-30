@@ -419,9 +419,15 @@ void AyresWiFiManager::handleSave() {
     return;
   }
 
-  saveCredentials(inSsid, inPass);
+  const bool preserveConnectedOnce =
+    credentialsConnectedOnce &&
+    inSsid == ssid &&
+    inPass == password;
+
+  saveCredentials(inSsid, inPass, preserveConnectedOnce);
   ssid = inSsid;
   password = inPass;
+  credentialsConnectedOnce = preserveConnectedOnce;
   connected = false;
 
   File success = LittleFS.open(htmlPathPrefix + "success.html", "r");
@@ -548,19 +554,22 @@ void AyresWiFiManager::loadCredentials() {
 
   String loadedSsid = doc["ssid"].as<String>();
   String loadedPassword = doc["password"].as<String>();
+  bool loadedConnectedOnce = doc["connected_once"] | false;
   if (loadedSsid.isEmpty() || loadedPassword.isEmpty()) {
     AWM_LOGW("⚠️ Credenciales vacías en archivo.");
     return;
   }
   ssid     = loadedSsid;
   password = loadedPassword;
+  credentialsConnectedOnce = loadedConnectedOnce;
   AWM_LOGI("✅ Credenciales cargadas (SSID=\"%s\").", ssid.c_str());
 }
 
-void AyresWiFiManager::saveCredentials(String s, String p) {
+void AyresWiFiManager::saveCredentials(String s, String p, bool connectedOnce) {
   StaticJsonDocument<192> doc;
   doc["ssid"]     = s;
   doc["password"] = p;
+  doc["connected_once"] = connectedOnce;
   File file = LittleFS.open("/wifi.json", "w");
   if (!file) {
     AWM_LOGE("❌ Error abriendo /wifi.json para escritura");
@@ -575,6 +584,7 @@ void AyresWiFiManager::eraseCredentials() {
 
   ssid = "";
   password = "";
+  credentialsConnectedOnce = false;
   connected = false;
 
   #if defined(ESP8266)
@@ -582,6 +592,20 @@ void AyresWiFiManager::eraseCredentials() {
   #endif
 
   AWM_LOGI("🧹 Limpieza de .json finalizada (respetando protegidos).");
+}
+
+bool AyresWiFiManager::hasConnectedOnce() const {
+  return credentialsConnectedOnce;
+}
+
+bool AyresWiFiManager::setConnectedOnce(bool connectedOnce) {
+  if (!tieneCredenciales()) {
+    return false;
+  }
+
+  saveCredentials(ssid, password, connectedOnce);
+  credentialsConnectedOnce = connectedOnce;
+  return true;
 }
 
 // =====================================================

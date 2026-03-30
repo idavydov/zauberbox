@@ -152,6 +152,8 @@ public:
     bool hayInternet();
     bool tieneCredenciales() const;
     void eraseCredentials();
+    bool hasConnectedOnce() const;
+    bool setConnectedOnce(bool connectedOnce);
 
     // ---------- utilidades extra ----------
     bool scanRedDetectada();
@@ -195,7 +197,7 @@ private:
 
     // ---------- credenciales ----------
     void loadCredentials();
-    void saveCredentials(String ssid, String password);
+    void saveCredentials(String ssid, String password, bool connectedOnce = false);
     bool isProtectedJson(const String& name) const;
     void eraseJsonInDir(const char* path);
 
@@ -210,6 +212,7 @@ private:
     // ---------- datos ----------
     // credenciales y HTML
     String ssid, password;
+    bool credentialsConnectedOnce = false;
     String htmlPathPrefix = "/";   // raíz del FS por defecto
 
     // servidor / dns
