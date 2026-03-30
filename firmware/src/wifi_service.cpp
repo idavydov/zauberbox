@@ -11,6 +11,7 @@ constexpr uint32_t kPortalConnectTimeoutMs = 30000;
 constexpr uint32_t kReconnectBackoffMs = 2000;
 constexpr uint32_t kReconnectAttemptMs = 10000;
 constexpr uint32_t kPortalConnectLogIntervalMs = 2000;
+constexpr char kWifiStaHostname[] = "zauberbox";
 
 } // namespace
 
@@ -24,7 +25,7 @@ void WifiService::begin(WifiConnectedCallback onConnected,
     manager_.setPortalTimeout(300);
     manager_.setAPClientCheck(true);
     manager_.setWebClientCheck(true);
-    manager_.setHostname("zauberbox");
+    manager_.setHostname(kWifiStaHostname);
     manager_.setReconnectBackoffMs(kReconnectBackoffMs);
     manager_.setReconnectAttemptMs(kReconnectAttemptMs);
     manager_.setFallbackPolicy(AyresWiFiManager::FallbackPolicy::BUTTON_ONLY);
@@ -47,6 +48,9 @@ bool WifiService::enable() {
     Serial.printf("Wi-Fi service: enabling (%s credentials).\n",
                   hasCredentials ? "with" : "without");
     if (hasCredentials) {
+        WiFi.disconnect(false);
+        WiFi.mode(WIFI_OFF);
+        WiFi.setHostname(kWifiStaHostname);
         appStateStore().syncWifiMode(WifiMode::Connecting);
         lastMode_ = WifiMode::Connecting;
         manager_.forzarReconexion();
@@ -171,6 +175,9 @@ void WifiService::beginPortalConnectionAttempt() {
 
     Serial.println("Wi-Fi service: credentials saved in portal, attempting STA connection.");
     manager_.closePortal();
+    WiFi.disconnect(false);
+    WiFi.mode(WIFI_OFF);
+    WiFi.setHostname(kWifiStaHostname);
     appStateStore().syncWifiMode(WifiMode::Connecting);
     lastMode_ = WifiMode::Connecting;
     manager_.forzarReconexion();
