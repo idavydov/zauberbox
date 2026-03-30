@@ -151,6 +151,7 @@ public:
     void reintentarConexionSiNecesario();
     bool hayInternet();
     bool tieneCredenciales() const;
+    void eraseCredentials();
 
     // ---------- utilidades extra ----------
     bool scanRedDetectada();
@@ -195,7 +196,6 @@ private:
     // ---------- credenciales ----------
     void loadCredentials();
     void saveCredentials(String ssid, String password);
-    void eraseCredentials();
     bool isProtectedJson(const String& name) const;
     void eraseJsonInDir(const char* path);
 

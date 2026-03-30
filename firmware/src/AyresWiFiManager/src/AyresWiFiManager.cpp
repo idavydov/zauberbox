@@ -419,28 +419,18 @@ void AyresWiFiManager::handleSave() {
     return;
   }
 
-  StaticJsonDocument<192> doc;
-  doc["ssid"]     = inSsid;
-  doc["password"] = inPass;
-
-  File file = LittleFS.open("/wifi.json", "w");
-  if (!file) {
-    mostrarPaginaError("Error al guardar credenciales.");
-    return;
-  }
-  serializeJson(doc, file);
-  file.close();
+  saveCredentials(inSsid, inPass);
+  ssid = inSsid;
+  password = inPass;
+  connected = false;
 
   File success = LittleFS.open(htmlPathPrefix + "success.html", "r");
   if (!success) {
-    server.send(200, "text/html", "<h1>Guardado. Reiniciando...</h1>");
+    server.send(200, "text/html", "<h1>Guardado. Intentando conectar...</h1>");
   } else {
     server.send(200, "text/html", success.readString());
     success.close();
   }
-
-  delay(1000);
-  ESP.restart();
 }
 
 void AyresWiFiManager::handleErase() {
@@ -582,6 +572,10 @@ void AyresWiFiManager::saveCredentials(String s, String p) {
 
 void AyresWiFiManager::eraseCredentials() {
   eraseJsonInDir("/");   // raíz
+
+  ssid = "";
+  password = "";
+  connected = false;
 
   #if defined(ESP8266)
     // En ESP8266 el iterador no es recursivo; llamar por subcarpetas si hace falta.
