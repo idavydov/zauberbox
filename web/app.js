@@ -141,7 +141,7 @@ async function enterDirectory(path, push = true) {
     if (push) window.location.hash = `/dir/${encodeURIComponent(path)}`;
     state.loading = true;
     state.currentPath = path; render();
-    state.files = await fetchAPI(`/files?path=${path}`);
+    state.files = await fetchAPI(`/files?path=${encodeURIComponent(path)}`);
     if (state.directories.length === 0) {
         state.directories = await fetchAPI('/list');
     }
@@ -223,12 +223,12 @@ async function handleDelete(fileName) {
     enterDirectory(state.currentPath);
 }
 
-async function handleUpload(files) {
+async function handleUpload(files, forcedType = null) {
     if (!files || files.length === 0) return;
     state.loading = true; render();
     
     for (let file of files) {
-        const type = file.type.startsWith('image/') ? 'cover' : 'mp3';
+        const type = forcedType || 'file';
         
         if (type === 'cover') {
             file = await convertToJpeg(file);
@@ -236,9 +236,10 @@ async function handleUpload(files) {
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('path', state.currentPath);
-        formData.append('type', type);
-        await fetchAPI('/upload', { method: 'POST', body: formData });
+        await fetchAPI(`/upload?path=${encodeURIComponent(state.currentPath)}&type=${encodeURIComponent(type)}`, {
+            method: 'POST',
+            body: formData
+        });
     }
     
     state.directories = await fetchAPI('/list');
@@ -332,8 +333,8 @@ async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset
 
 async function handleGenerateCard() {
     const currentDir = state.directories.find(d => d.name === state.currentPath);
-    const coverUrl = state.files.find(f => f.name.toLowerCase() === 'cover.jpg') 
-        ? `${API_BASE}/file?path=${state.currentPath}&name=cover.jpg` 
+    const coverUrl = state.files.find(f => f.name.toLowerCase() === 'cover.jpg')
+        ? `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent('cover.jpg')}`
         : null;
 
     if (!coverUrl) {
@@ -395,8 +396,8 @@ async function handleDownloadSheets() {
 
             for (let j = 0; j < chunk.length; j++) {
                 const name = chunk[j];
-                const files = await fetchAPI(`/files?path=${name}`);
-                const coverUrl = `${API_BASE}/file?path=${name}&name=cover.jpg`;
+                const files = await fetchAPI(`/files?path=${encodeURIComponent(name)}`);
+                const coverUrl = `${API_BASE}/file?path=${encodeURIComponent(name)}&name=${encodeURIComponent('cover.jpg')}`;
                 const mp3s = files.filter(f => f.name.toLowerCase().endsWith('.mp3')).map(f => f.name.replace(/\.mp3$/i, '')).sort();
                 await generateSingleCard(ctx, name, coverUrl, mp3s, (j % 2) * CARD_W_PX, Math.floor(j / 2) * CARD_H_PX, CARD_W_PX, CARD_H_PX);
             }
@@ -500,7 +501,7 @@ function setupDragAndDrop() {
 
     zone.addEventListener('drop', e => {
         zone.classList.remove('drag-over');
-        handleUpload(e.dataTransfer.files);
+        handleUpload(e.dataTransfer.files, 'file');
     });
 }
 
@@ -571,7 +572,7 @@ function render() {
         const others = state.files.filter(f => !f.name.toLowerCase().endsWith('.mp3') && f.name.toLowerCase() !== 'cover.jpg');
 
         const renderFileItem = (file, icon) => {
-            const fileUrl = `${API_BASE}/file?path=${state.currentPath}&name=${file.name}`;
+            const fileUrl = `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent(file.name)}`;
             return `
                 <div class="file-item">
                     <span class="file-icon">${icon}</span>
@@ -605,7 +606,7 @@ function render() {
 
         html += `
                         <label id="drop-zone" class="file-item upload-item" style="border-top: 1px solid var(--pico-muted-border-color);">
-                            <input type="file" multiple onchange="handleUpload(this.files)">
+                            <input type="file" multiple onchange="handleUpload(this.files, 'file')">
                             <span class="file-icon">${ICONS.plus}</span>
                             <span class="file-name">Click or Drag & Drop to Upload...</span>
                         </label>
@@ -614,7 +615,7 @@ function render() {
         `;
 
         const coverFile = state.files.find(f => f.name.toLowerCase() === 'cover.jpg');
-        const coverUrl = coverFile ? `${API_BASE}/file?path=${state.currentPath}&name=${coverFile.name}` : null;
+        const coverUrl = coverFile ? `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent(coverFile.name)}` : null;
         
         html += `
             <section>
@@ -625,7 +626,7 @@ function render() {
                     <div style="position:relative; margin:0 auto; max-width:100%;">
                         ${coverUrl ? `<img src="${coverUrl}">` : `<div class="placeholder-img" style="aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; background:var(--pico-secondary-focus); color:var(--pico-secondary); border-radius:8px;">No Cover</div>`}
                         <label class="cover-edit-overlay" title="Change Cover">
-                            <input type="file" accept="image/*" style="display:none" onchange="handleUpload(this.files)">
+                            <input type="file" accept="image/*" style="display:none" onchange="handleUpload(this.files, 'cover')">
                             ${ICONS.edit}
                         </label>
                         ${coverUrl ? `
