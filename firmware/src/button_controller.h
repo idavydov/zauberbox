@@ -1,10 +1,10 @@
 #pragma once
 
 #include <Arduino.h>
-
-#include <functional>
+#include <freertos/queue.h>
 
 enum class ButtonId : uint8_t {
+    Boot,
     Key1,
     Key2,
     Key3,
@@ -20,11 +20,10 @@ struct ButtonEvent {
     ButtonPressKind pressKind;
 };
 
-using ButtonEventCallback = std::function<void(const ButtonEvent &)>;
-
 class ButtonController {
   public:
-    void begin(ButtonEventCallback onEvent);
+    void begin();
+    bool pollEvent(ButtonEvent *event) const;
     bool waitForFactoryResetRequest(uint32_t holdMs) const;
     [[noreturn]] void factoryResetAndReboot() const;
 
@@ -44,7 +43,8 @@ class ButtonController {
     void dispatchEvent(const ButtonEvent &event) const;
     void configureInputs() const;
     bool isButtonPressed(uint8_t pin) const;
+    bool isBootButtonPressed() const;
 
-    ButtonEventCallback onEvent_ = nullptr;
+    QueueHandle_t eventQueue_ = nullptr;
     TaskHandle_t taskHandle_ = nullptr;
 };

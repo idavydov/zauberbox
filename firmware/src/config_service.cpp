@@ -1,5 +1,6 @@
 #include "config_service.h"
 
+#include <ArduinoJson.h>
 #include <LittleFS.h>
 
 namespace {
@@ -27,7 +28,27 @@ void ConfigService::begin() {
 }
 
 bool ConfigService::hasWifiCredentials() const {
-    return LittleFS.exists(kWifiCredentialsPath);
+    if (!LittleFS.exists(kWifiCredentialsPath)) {
+        return false;
+    }
+
+    File file = LittleFS.open(kWifiCredentialsPath, "r");
+    if (!file) {
+        Serial.println("Config service: failed to open /wifi.json.");
+        return false;
+    }
+
+    StaticJsonDocument<192> doc;
+    const DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    if (error) {
+        Serial.println("Config service: /wifi.json is invalid.");
+        return false;
+    }
+
+    const String ssid = doc["ssid"].as<String>();
+    const String password = doc["password"].as<String>();
+    return !ssid.isEmpty() && !password.isEmpty();
 }
 
 FactoryResetReport ConfigService::eraseFactoryData() const {

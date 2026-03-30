@@ -17,9 +17,7 @@ void AppController::begin() {
     appStateStore().init();
     configService().begin();
 
-    buttonController_.begin([this](const ButtonEvent &event) {
-        handleButtonEvent(event);
-    });
+    buttonController_.begin();
     ledController_.begin();
 
     if (buttonController_.waitForFactoryResetRequest(kFactoryResetHoldMs)) {
@@ -30,24 +28,50 @@ void AppController::begin() {
     (void)qrService_.begin([this](const String &albumId) {
         return handleQrAlbumScanned(albumId);
     });
+    wifiService_.begin([this]() {
+        handleWifiConnected();
+    });
 
     appStateStore().completeBoot();
 }
 
 void AppController::update() {
+    handlePendingButtonEvents();
+    wifiService_.update();
     qrService_.update();
     handleScanAudioState();
     handlePendingQrAlbumStart();
     mediaService_.update();
 }
 
+void AppController::handlePendingButtonEvents() {
+    ButtonEvent event = {};
+    while (buttonController_.pollEvent(&event)) {
+        handleButtonEvent(event);
+    }
+}
+
 void AppController::handleButtonEvent(const ButtonEvent &event) {
+    if (event.buttonId == ButtonId::Boot) {
+        Serial.printf("App controller: BOOT button in state %s, Wi-Fi %s\n",
+                      AppStateStore::stateName(appStateStore().current()),
+                      wifiService_.isEnabled() ? "enabled" : "disabled");
+        if (wifiService_.isEnabled()) {
+            wifiService_.disable();
+        } else {
+            (void)wifiService_.enable();
+        }
+        return;
+    }
+
     const AppState state = appStateStore().current();
     if (state != AppState::Playing && state != AppState::Paused) {
         return;
     }
 
     switch (event.buttonId) {
+        case ButtonId::Boot:
+            break;
         case ButtonId::Key1:
             if (event.pressKind == ButtonPressKind::ShortPress) {
                 (void)mediaService_.changeVolume(-1);
@@ -70,6 +94,10 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
             }
             break;
     }
+}
+
+void AppController::handleWifiConnected() {
+    (void)mediaService_.playWifiConnectedSound();
 }
 
 bool AppController::handleQrAlbumScanned(const String &albumId) {

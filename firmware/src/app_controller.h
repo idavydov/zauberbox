@@ -14,6 +14,8 @@ class AppController {
     void update();
 
   private:
+    void handlePendingButtonEvents();
+    void handleWifiConnected();
     void handleScanAudioState();
     void handlePendingQrAlbumStart();
     void handleButtonEvent(const ButtonEvent &event);

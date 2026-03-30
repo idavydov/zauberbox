@@ -9,12 +9,46 @@ namespace {
 constexpr uint32_t kKeyHoldMs = 3000;
 constexpr uint32_t kPollIntervalMs = 20;
 constexpr uint32_t kDebounceMs = 30;
+constexpr uint32_t kButtonEventQueueDepth = 8;
+
+const char *buttonName(ButtonId buttonId) {
+    switch (buttonId) {
+        case ButtonId::Boot:
+            return "BOOT";
+        case ButtonId::Key1:
+            return "KEY1";
+        case ButtonId::Key2:
+            return "KEY2";
+        case ButtonId::Key3:
+            return "KEY3";
+    }
+
+    return "UNKNOWN";
+}
+
+const char *pressKindName(ButtonPressKind pressKind) {
+    switch (pressKind) {
+        case ButtonPressKind::ShortPress:
+            return "short";
+        case ButtonPressKind::LongPress:
+            return "long";
+    }
+
+    return "unknown";
+}
 
 } // namespace
 
-void ButtonController::begin(ButtonEventCallback onEvent) {
-    onEvent_ = onEvent;
+void ButtonController::begin() {
     configureInputs();
+
+    if (!eventQueue_) {
+        eventQueue_ = xQueueCreate(kButtonEventQueueDepth, sizeof(ButtonEvent));
+        if (!eventQueue_) {
+            Serial.println("Button controller: failed to create event queue.");
+            return;
+        }
+    }
 
     if (!taskHandle_) {
         xTaskCreatePinnedToCore(taskEntry,
@@ -25,6 +59,14 @@ void ButtonController::begin(ButtonEventCallback onEvent) {
                                 &taskHandle_,
                                 1);
     }
+}
+
+bool ButtonController::pollEvent(ButtonEvent *event) const {
+    if (!eventQueue_ || !event) {
+        return false;
+    }
+
+    return xQueueReceive(eventQueue_, event, 0) == pdPASS;
 }
 
 bool ButtonController::waitForFactoryResetRequest(uint32_t holdMs) const {
@@ -50,6 +92,15 @@ void ButtonController::taskEntry(void *context) {
 
 void ButtonController::runTask() {
     ButtonTracker buttons[] = {
+        {
+            .buttonId = ButtonId::Boot,
+            .pin = 0,
+            .rawPressed = false,
+            .stablePressed = false,
+            .longDispatched = false,
+            .lastRawChangeAtMs = 0,
+            .pressedAtMs = 0,
+        },
         {
             .buttonId = ButtonId::Key1,
             .pin = kIoExpanderKey1Pin,
@@ -83,7 +134,9 @@ void ButtonController::runTask() {
         const uint32_t now = millis();
 
         for (ButtonTracker &button : buttons) {
-            const bool rawPressed = isButtonPressed(button.pin);
+            const bool rawPressed = button.buttonId == ButtonId::Boot
+                                        ? isBootButtonPressed()
+                                        : isButtonPressed(button.pin);
             if (rawPressed != button.rawPressed) {
                 button.rawPressed = rawPressed;
                 button.lastRawChangeAtMs = now;
@@ -122,12 +175,19 @@ void ButtonController::runTask() {
 }
 
 void ButtonController::dispatchEvent(const ButtonEvent &event) const {
-    if (onEvent_) {
-        onEvent_(event);
+    Serial.printf("Button event: %s %s press\n",
+                  buttonName(event.buttonId),
+                  pressKindName(event.pressKind));
+    if (!eventQueue_) {
+        return;
+    }
+    if (xQueueSend(eventQueue_, &event, 0) != pdPASS) {
+        Serial.println("Button controller: event queue full, dropping event.");
     }
 }
 
 void ButtonController::configureInputs() const {
+    pinMode(0, INPUT_PULLUP);
     if (!ioExpanderPinMode(kIoExpanderKey1Pin, INPUT)) {
         Serial.println("KEY1 config failed.");
     }
@@ -145,6 +205,10 @@ bool ButtonController::isButtonPressed(uint8_t pin) const {
         return false;
     }
     return !levelHigh;
+}
+
+bool ButtonController::isBootButtonPressed() const {
+    return digitalRead(0) == LOW;
 }
 
 [[noreturn]] void ButtonController::factoryResetAndReboot() const {
