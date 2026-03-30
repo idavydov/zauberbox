@@ -309,6 +309,12 @@ Work:
 - done: connect scan timeout to `Idle`
 - done: make `Idle` the state where camera activity stops while the rest of the
   system remains available
+- note: current hardware requires a QR shutdown workaround:
+  - keep EXIO6 HIGH on scan exit
+  - only power the camera down
+  - vendor examples describe EXIO6 as switching the camera between TX/RX and
+    USB D+/D- paths
+  - driving EXIO6 LOW currently breaks USB logging/flashing
 - define the intentional re-scan/restart policy once there is an explicit path
   back from `Idle` to `QR Scan`
 

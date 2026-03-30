@@ -321,8 +321,9 @@ void QrService::disableCameraHardware() const {
     }
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    if (!ioExpanderDigitalWrite(kIoExpanderCameraRouteSelectPin, LOW)) {
-        Serial.println("QR service: failed to restore default camera routing.");
-    }
-    vTaskDelay(pdMS_TO_TICKS(50));
+    // Board-specific workaround: vendor examples describe EXIO6 as switching the
+    // camera between the TX/RX path (HIGH) and the USB D+/D- path (LOW). On the
+    // current hardware/firmware combination, driving EXIO6 LOW after leaving
+    // QrScan makes USB logging/flashing unstable. Keep EXIO6 HIGH and only cut
+    // camera power here until that interaction is understood.
 }
