@@ -41,6 +41,7 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
                    toState == AppState::Resetting;
         case AppState::WifiPortal:
             return toState == AppState::QrScan ||
+                   toState == AppState::Idle ||
                    toState == AppState::Resetting;
         case AppState::Resetting:
             return false;
@@ -144,7 +145,9 @@ void AppStateStore::syncWifiMode(WifiMode mode) {
         nextState = AppState::WifiPortal;
     } else if (previousMode == WifiMode::PortalActive && mode != WifiMode::PortalActive &&
                snapshot_.appState == AppState::WifiPortal) {
-        nextState = AppState::QrScan;
+        nextState = mode == WifiMode::Connecting || mode == WifiMode::Connected
+                        ? AppState::Idle
+                        : AppState::QrScan;
     }
     requestedState = nextState;
 

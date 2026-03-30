@@ -51,6 +51,15 @@ bool ConfigService::hasWifiCredentials() const {
     return !ssid.isEmpty() && !password.isEmpty();
 }
 
+bool ConfigService::eraseWifiCredentials() const {
+    FactoryResetReport report = {
+        .removedCount = 0,
+        .missingCount = 0,
+        .failedCount = 0,
+    };
+    return removeIfPresent(kWifiCredentialsPath, &report);
+}
+
 FactoryResetReport ConfigService::eraseFactoryData() const {
     FactoryResetReport report = {
         .removedCount = 0,

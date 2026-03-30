@@ -12,6 +12,7 @@ class ConfigService {
   public:
     void begin();
     bool hasWifiCredentials() const;
+    bool eraseWifiCredentials() const;
     FactoryResetReport eraseFactoryData() const;
 
   private:
