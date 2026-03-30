@@ -1,5 +1,6 @@
 #include "wifi_service.h"
 
+#include <ESPmDNS.h>
 #include <WiFi.h>
 
 #include "config_service.h"
@@ -72,6 +73,7 @@ void WifiService::disable() {
     nextPortalConnectLogAtMs_ = 0;
 
     manager_.closePortal();
+    MDNS.end();
     WiFi.disconnect(true);
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
@@ -181,6 +183,7 @@ void WifiService::failPortalConnectionAttempt() {
     portalConnectStartedAtMs_ = 0;
     nextPortalConnectLogAtMs_ = 0;
     manager_.eraseCredentials();
+    MDNS.end();
     WiFi.disconnect(true);
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);

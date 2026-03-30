@@ -591,6 +591,9 @@ bool AyresWiFiManager::connectToWiFi() {
   if (!tieneCredenciales()) return false;
 
   WiFi.mode(WIFI_STA);
+  if (hostname.length()) {
+    WiFi.setHostname(hostname.c_str());
+  }
   WiFi.begin(ssid.c_str(), password.c_str());
 
   AWM_LOGI("Conectando a %s", ssid.c_str());
@@ -641,6 +644,9 @@ void AyresWiFiManager::reintentarConexionSiNecesario() {
     // [CHANGED] Si hay portal AWM o AP externo, mantener AP activo durante el intento
     if (portalActive || externalApActive) WiFi.mode(WIFI_AP_STA);
     else                                  WiFi.mode(WIFI_STA);
+    if (hostname.length()) {
+      WiFi.setHostname(hostname.c_str());
+    }
 
     WiFi.begin(ssid.c_str(), password.c_str());
     uint32_t t0 = millis();
@@ -699,6 +705,9 @@ void AyresWiFiManager::forzarReconexion() {
   // [CHANGED] Respetar AP externo para no tumbarlo
   if (portalActive || externalApActive) WiFi.mode(WIFI_AP_STA);
   else                                  WiFi.mode(WIFI_STA);
+  if (hostname.length()) {
+    WiFi.setHostname(hostname.c_str());
+  }
 
   WiFi.begin(ssid.c_str(), password.c_str());
   ultimoIntentoWiFi = millis();

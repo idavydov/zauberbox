@@ -1,5 +1,7 @@
 #include "app_controller.h"
 
+#include <ESPmDNS.h>
+
 #include "app_state.h"
 #include "audio_driver.h"
 #include "config_service.h"
@@ -12,6 +14,7 @@ constexpr uint32_t kQrErrorResumeDelayMs = 250;
 constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
 constexpr uint32_t kWifiPortalResumeFallbackMs = 5000;
 constexpr uint32_t kIdleLogIntervalMs = 5000;
+constexpr char kWifiMdnsHostname[] = "zauberbox";
 
 } // namespace
 
@@ -103,6 +106,12 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
 }
 
 void AppController::handleWifiConnected() {
+    MDNS.end();
+    if (MDNS.begin(kWifiMdnsHostname)) {
+        Serial.printf("App controller: mDNS started at http://%s.local\n", kWifiMdnsHostname);
+    } else {
+        Serial.printf("App controller: mDNS start failed for %s.local\n", kWifiMdnsHostname);
+    }
     (void)mediaService_.playWifiConnectedSound();
 }
 
