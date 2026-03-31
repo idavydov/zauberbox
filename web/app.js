@@ -575,7 +575,7 @@ function render() {
         `;
 
         const mp3s = state.files.filter(f => f.name.toLowerCase().endsWith('.mp3'));
-        const others = state.files.filter(f => !f.name.toLowerCase().endsWith('.mp3') && f.name.toLowerCase() !== 'cover.jpg');
+        const others = state.files.filter(f => !f.name.toLowerCase().endsWith('.mp3'));
 
         const renderFileItem = (file, icon) => {
             const fileUrl = `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent(file.name)}`;
