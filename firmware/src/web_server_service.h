@@ -28,6 +28,8 @@ class WebServerService {
     static bool applyFileTimestamp(const String &path, time_t lastWrite);
     static const char *mimeTypeForPath(const String &path);
     void sendJsonError(int code, const char *message);
+    void sendFirstLoginPage(const char *errorMessage = nullptr);
+    void handleUpdatePassword();
     void handleIndex();
     void handleStaticAsset();
     void handleListAlbums();

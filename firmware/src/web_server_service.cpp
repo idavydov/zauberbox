@@ -16,6 +16,7 @@
 namespace {
 
 constexpr char kIndexPath[] = "/index.html";
+constexpr char kFirstLoginPath[] = "/first_login.html";
 
 String readJsonString(WebServer &server, const char *key) {
     StaticJsonDocument<256> doc;
@@ -73,6 +74,21 @@ String asciiFallbackFileName(const String &value) {
         fallback = "download";
     }
     return fallback;
+}
+
+String readLittleFsTextFile(const char *path) {
+    if (!LittleFS.exists(path)) {
+        return "";
+    }
+
+    File file = LittleFS.open(path, "r");
+    if (!file) {
+        return "";
+    }
+
+    String body = file.readString();
+    file.close();
+    return body;
 }
 
 uint64_t fnv1a64Begin() {
@@ -156,6 +172,10 @@ void WebServerService::registerRoutes() {
     });
     server_.on("/index.html", HTTP_GET, [this]() {
         handleIndex();
+    });
+
+    server_.on("/api/auth/password", HTTP_POST, [this]() {
+        handleUpdatePassword();
     });
 
     for (const char *asset : {"/style.css", "/app.js", "/pico.min.css", "/qrcode.min.js"}) {
@@ -384,8 +404,51 @@ void WebServerService::sendJsonError(int code, const char *message) {
     server_.send(code, "application/json", body);
 }
 
+void WebServerService::sendFirstLoginPage(const char *errorMessage) {
+    String body = readLittleFsTextFile(kFirstLoginPath);
+    if (body.isEmpty()) {
+        server_.send(503, "text/plain", "First-login page missing. Upload LittleFS data.");
+        return;
+    }
+
+    const WebAuthConfig auth = configService().loadWebAuthConfig();
+    body.replace("__USERNAME__", auth.username.isEmpty() ? "admin" : auth.username);
+
+    const String errorBlock = (errorMessage && errorMessage[0] != '\0')
+                                  ? String("<div class=\"error\">") + errorMessage + "</div>"
+                                  : "";
+    body.replace("__ERROR_BLOCK__", errorBlock);
+    server_.send(200, "text/html; charset=utf-8", body);
+}
+
+void WebServerService::handleUpdatePassword() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    const String password = readJsonString(server_, "password");
+    String trimmedPassword = password;
+    trimmedPassword.trim();
+    if (trimmedPassword.length() < 4) {
+        sendJsonError(400, "Password must be at least 4 characters");
+        return;
+    }
+
+    if (!configService().saveWebAuthPassword(trimmedPassword)) {
+        sendJsonError(500, "Failed to save password");
+        return;
+    }
+
+    server_.send(200, "application/json", "{\"success\":true}");
+}
+
 void WebServerService::handleIndex() {
     if (!ensureAuthorized()) {
+        return;
+    }
+    const WebAuthConfig auth = configService().loadWebAuthConfig();
+    if (auth.isDefault) {
+        sendFirstLoginPage();
         return;
     }
     if (!LittleFS.exists(kIndexPath)) {

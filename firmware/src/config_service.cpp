@@ -78,17 +78,49 @@ WebAuthConfig ConfigService::loadWebAuthConfig() const {
         return config;
     }
 
-    const String username = doc["username"].as<String>();
     const String password = doc["password"].as<String>();
-    if (username.isEmpty() || password.isEmpty()) {
-        Serial.println("Config service: /web-auth.json missing username/password.");
+    if (password.isEmpty()) {
+        Serial.println("Config service: /web-auth.json missing password.");
         return config;
     }
 
-    config.username = username;
+    const String username = doc["username"].as<String>();
+    if (!username.isEmpty()) {
+        config.username = username;
+    }
     config.password = password;
     config.isDefault = false;
     return config;
+}
+
+bool ConfigService::saveWebAuthPassword(const String &password) const {
+    String trimmedPassword = password;
+    trimmedPassword.trim();
+    if (trimmedPassword.isEmpty()) {
+        Serial.println("Config service: refusing to save empty web password.");
+        return false;
+    }
+
+    const WebAuthConfig current = loadWebAuthConfig();
+    File file = LittleFS.open(kWebAuthConfigPath, "w");
+    if (!file) {
+        Serial.println("Config service: failed to open /web-auth.json for writing.");
+        return false;
+    }
+
+    StaticJsonDocument<192> doc;
+    doc["username"] = current.username.isEmpty() ? kDefaultWebUsername : current.username;
+    doc["password"] = trimmedPassword;
+
+    const size_t written = serializeJson(doc, file);
+    file.close();
+    if (written == 0) {
+        Serial.println("Config service: failed to write /web-auth.json.");
+        return false;
+    }
+
+    Serial.println("Config service: web password updated.");
+    return true;
 }
 
 bool ConfigService::eraseWifiCredentials() const {

@@ -23,6 +23,7 @@ class ConfigService {
     void begin();
     bool hasWifiCredentials() const;
     WebAuthConfig loadWebAuthConfig() const;
+    bool saveWebAuthPassword(const String &password) const;
     bool eraseWifiCredentials() const;
     FactoryResetReport eraseFactoryData() const;
 
