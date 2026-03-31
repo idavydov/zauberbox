@@ -7,6 +7,27 @@
   camera/audio behavior.
 - The current firmware therefore uses a camera-first runtime model.
 
+## Confirmed Root Cause
+
+The long-running camera/audio bug is now narrowed and fixed:
+
+- direct `esp_camera_init(...)` in the real firmware works
+- `ESP32-audioI2S` playback after that works
+- QR decoding can still work afterward
+- the bad path was specifically the vendored
+  `qr_reader/ESP32QRCodeReader::setup()` camera-init path
+
+So the rule is more precise than "camera init breaks audio":
+
+- camera init itself is fine
+- the vendored QR-reader camera-init wrapper path was the thing that broke the
+  first post-camera sound
+
+The fix is:
+
+- `QrService` owns camera init/deinit directly
+- `ESP32QRCodeReader` is used only for decode task / queue handling
+
 ## Current Runtime Model
 
 1. Boot enters `QrScan`.
@@ -67,8 +88,9 @@ The safest product behavior remains serialized operation:
 
 True simultaneous camera+audio support is still unproven.
 
-Most plausible underlying cause remains a shared peripheral/clock conflict
-between camera and audio.
+The previously suspected shared peripheral/clock conflict was too broad.
+The confirmed production bug was higher level: the vendored QR-reader
+camera-init path, not `esp_camera_init()` in general.
 
 ## Other Confirmed Notes
 

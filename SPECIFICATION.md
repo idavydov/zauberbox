@@ -52,6 +52,8 @@ The firmware behavior should be modeled as explicit states.
 - Audio must not be initialized before camera startup, because on current
   hardware audio-first startup can break later camera operation, while
   camera-first startup followed by delayed audio initialization is stable.
+- Camera initialization for QR mode should be owned by `QrService` directly.
+  The vendored QR-reader wrapper should not own the camera-init path.
 
 ### 2. QR Scan
 
@@ -59,6 +61,8 @@ The firmware behavior should be modeled as explicit states.
 - The LED shows the scan animation.
 - After camera startup, audio may be initialized and a short `scan_start`
   chime may be played after a short delay.
+- The production QR path should initialize the camera directly in `QrService`
+  and only then start the QR decoder task.
 - After the startup chime, speaker output may be disabled while active scanning
   continues, to reduce interference noise.
 - On this board, `EXIO6` selects the camera routing:
@@ -188,6 +192,10 @@ playback path.
 On this board, scan exit powers the camera down while leaving `EXIO6` HIGH,
 which keeps the camera on the normal `TX/RX` routing rather than switching it
 to the USB `D+/D-` path.
+
+The confirmed camera/audio regression was caused by using the vendored
+`ESP32QRCodeReader::setup()` camera-init path. Direct camera initialization in
+`QrService` is the required implementation strategy.
 
 ## LED Behavior
 

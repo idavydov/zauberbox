@@ -1,5 +1,13 @@
 # Sound issues
-- Camera initialization breaks audio. So camera should be initialized first.
+- Audio must still be initialized after camera startup on this board.
+- The confirmed camera/audio bug was not generic `esp_camera_init()`. The bad
+  path was the vendored `qr_reader/ESP32QRCodeReader::setup()` camera-init
+  path.
+- The reliable runtime design is:
+  - `QrService` owns camera init/deinit directly via `esp_camera_init()`
+  - `ESP32QRCodeReader` is used only for decode task / queue handling
+- If camera/audio behavior regresses again, first check whether camera init is
+  going through `QrService` or through the vendored reader wrapper.
 - First sound after boot requires ~1s after sound card initialization.
 - Subsequent sounds require ~50-100ms after unmute.
 - Audio output should be muted when not used due to interference sounds.
