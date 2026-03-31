@@ -242,9 +242,12 @@ bool AppController::shouldMuteOutputInCurrentState() const {
         return qrService_.isScanning() && pendingQrAlbumId_.isEmpty();
     }
 
+    if (state == AppState::WifiPortal) {
+        return !audioIsRunning();
+    }
+
     return state == AppState::Idle ||
-           state == AppState::Paused ||
-           state == AppState::WifiPortal;
+           state == AppState::Paused;
 }
 
 void AppController::handleScanAudioState() {

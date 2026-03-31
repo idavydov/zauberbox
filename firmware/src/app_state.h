@@ -47,6 +47,7 @@ class AppStateStore {
         .appState = AppState::Boot,
         .wifiMode = WifiMode::Disabled,
     };
+    AppState wifiPortalReturnState_ = AppState::QrScan;
 };
 
 AppStateStore &appStateStore();
