@@ -8,4 +8,7 @@ wheels/
 # Virtual environments
 .venv
 
+# TODO.md is only for temprorary notes
+TODO.md
+
 tmp/
