@@ -5,6 +5,9 @@
  */
 
 const API_BASE = '/api';
+const COVER_MAX_DIMENSION = 1600;
+const COVER_JPEG_QUALITIES = [0.82, 0.72, 0.62];
+const COVER_TARGET_MAX_BYTES = 900 * 1024;
 let state = {
     view: 'dashboard',
     currentPath: null,
@@ -478,13 +481,30 @@ async function convertToJpeg(file) {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
+                const scale = Math.min(1, COVER_MAX_DIMENSION / Math.max(img.width, img.height));
+                canvas.width = Math.max(1, Math.round(img.width * scale));
+                canvas.height = Math.max(1, Math.round(img.height * scale));
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                canvas.toBlob((blob) => {
-                    resolve(new File([blob], "cover.jpg", { type: 'image/jpeg' }));
-                }, 'image/jpeg', 0.9);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                const tryQualityAt = (index) => {
+                    const quality = COVER_JPEG_QUALITIES[Math.min(index, COVER_JPEG_QUALITIES.length - 1)];
+                    canvas.toBlob((blob) => {
+                        if (!blob) {
+                            resolve(new File([], "cover.jpg", { type: 'image/jpeg' }));
+                            return;
+                        }
+                        if (blob.size <= COVER_TARGET_MAX_BYTES || index >= COVER_JPEG_QUALITIES.length - 1) {
+                            resolve(new File([blob], "cover.jpg", { type: 'image/jpeg' }));
+                            return;
+                        }
+                        tryQualityAt(index + 1);
+                    }, 'image/jpeg', quality);
+                };
+
+                tryQualityAt(0);
             };
             img.src = e.target.result;
         };
