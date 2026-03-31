@@ -26,6 +26,7 @@ constexpr uint8_t kMaxVolume = 21;
 constexpr uint8_t kPlaybackVolume = 14;
 constexpr size_t kAudioCommandQueueDepth = 8;
 constexpr size_t kMaxAudioPathLength = 192;
+constexpr BaseType_t kAudioServiceCore = 1;
 
 enum class AudioCommandType : uint8_t {
     Enqueue,
@@ -299,7 +300,13 @@ bool audioInit() {
         }
     }
     if (!gAudioServiceTask) {
-        xTaskCreatePinnedToCore(audioServiceTask, "Audio_Service", 8192, nullptr, 2, &gAudioServiceTask, 0);
+        xTaskCreatePinnedToCore(audioServiceTask,
+                                "Audio_Service",
+                                8192,
+                                nullptr,
+                                2,
+                                &gAudioServiceTask,
+                                kAudioServiceCore);
     }
     gAudioInitialized = true;
     return true;

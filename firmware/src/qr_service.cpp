@@ -50,6 +50,34 @@ CameraPins makeCameraPins() {
     };
 }
 
+camera_config_t makeDirectCameraConfig() {
+    camera_config_t config = {};
+    config.ledc_channel = LEDC_CHANNEL_0;
+    config.ledc_timer = LEDC_TIMER_0;
+    config.pin_d0 = kCameraPinD0;
+    config.pin_d1 = kCameraPinD1;
+    config.pin_d2 = kCameraPinD2;
+    config.pin_d3 = kCameraPinD3;
+    config.pin_d4 = kCameraPinD4;
+    config.pin_d5 = kCameraPinD5;
+    config.pin_d6 = kCameraPinD6;
+    config.pin_d7 = kCameraPinD7;
+    config.pin_xclk = kCameraPinXclk;
+    config.pin_pclk = kCameraPinPclk;
+    config.pin_vsync = kCameraPinVsync;
+    config.pin_href = kCameraPinHref;
+    config.pin_sccb_sda = kCameraPinSccbSda;
+    config.pin_sccb_scl = kCameraPinSccbScl;
+    config.pin_pwdn = kCameraPinPwdn;
+    config.pin_reset = kCameraPinReset;
+    config.xclk_freq_hz = 10000000;
+    config.pixel_format = PIXFORMAT_GRAYSCALE;
+    config.frame_size = FRAMESIZE_QVGA;
+    config.jpeg_quality = 15;
+    config.fb_count = 1;
+    return config;
+}
+
 } // namespace
 
 bool QrService::begin(AlbumScanCallback onAlbumScanned) {
@@ -250,35 +278,35 @@ bool QrService::initCamera() {
         return true;
     }
 
-    configureCameraRouting();
     reader_ = new ESP32QRCodeReader(makeCameraPins(), FRAMESIZE_QVGA);
-    reader_->cameraConfig = {};
+    reader_->cameraConfig = makeDirectCameraConfig();
 
-    const QRCodeReaderSetupErr setupErr = reader_->setup();
-    if (setupErr != SETUP_OK) {
-        switch (setupErr) {
-            case SETUP_NO_PSRAM_ERROR:
-                Serial.println("QR service: QR decoder requires PSRAM.");
-                break;
-            case SETUP_CAMERA_INIT_ERROR:
-                Serial.println("QR service: camera setup failed.");
-                break;
-            case SETUP_OK:
-                break;
-        }
+    configureCameraRouting();
+
+    if (!psramFound()) {
+        Serial.println("QR service: QR decoder requires PSRAM.");
         delete reader_;
         reader_ = nullptr;
         disableCameraHardware();
         return false;
     }
 
-    reader_->beginOnCore(kQrDecodeCore);
+    const esp_err_t err = esp_camera_init(&reader_->cameraConfig);
+    if (err != ESP_OK) {
+        Serial.printf("QR service: direct esp_camera_init failed: 0x%lx\n",
+                      static_cast<unsigned long>(err));
+        delete reader_;
+        reader_ = nullptr;
+        disableCameraHardware();
+        return false;
+    }
 
     sensor_t *sensor = esp_camera_sensor_get();
     if (sensor) {
         sensor->set_hmirror(sensor, 1);
     }
 
+    reader_->beginOnCore(kQrDecodeCore);
     cameraInitialized_ = true;
     Serial.println("QR service: OV5640 camera initialized.");
     return true;

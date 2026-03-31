@@ -42,7 +42,9 @@ class AppController {
     uint32_t resumeScanningReadyAtMs_ = 0;
     uint32_t scanStartChimeReadyAtMs_ = 0;
     uint32_t scanStartChimeMuteReadyAtMs_ = 0;
+    uint32_t scanStartChimePlaybackWaitUntilMs_ = 0;
     bool scanStartChimeQueued_ = false;
+    bool scanStartChimePlaybackSeen_ = false;
     bool scanSpeakerMutedForScan_ = false;
     bool pendingScanUiSound_ = false;
     UiSound pendingScanUiSoundType_ = UiSound::Button;

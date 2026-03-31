@@ -5,6 +5,7 @@
 #include "app_state.h"
 #include "audio_driver.h"
 #include "config_service.h"
+#include "io_expander.h"
 
 namespace {
 
@@ -13,6 +14,7 @@ constexpr uint32_t kScanStartAudioReadyDelayMs = 500;
 constexpr uint32_t kGeneralAudioReadyDelayMs = 50;
 constexpr uint32_t kQrErrorResumeDelayMs = 250;
 constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
+constexpr uint32_t kScanStartPlaybackStartFallbackMs = 3000;
 constexpr uint32_t kWifiPortalResumeFallbackMs = 5000;
 constexpr char kWifiMdnsHostname[] = "zauberbox";
 
@@ -27,13 +29,14 @@ void AppController::begin() {
 
     if (buttonController_.waitForFactoryResetRequest(kFactoryResetHoldMs)) {
         buttonController_.factoryResetAndReboot();
+        return;
     }
 
     (void)mediaService_.begin();
-    webServerService_.begin(&mediaService_);
     (void)qrService_.begin([this](const String &albumId) {
         return handleQrAlbumScanned(albumId);
     });
+    webServerService_.begin(&mediaService_);
     wifiService_.begin([this]() {
         handleWifiConnected();
     }, [this](bool reopenPortal) {
@@ -241,7 +244,9 @@ void AppController::handleScanAudioState() {
         lastScanning_ = scanning;
         scanStartChimeReadyAtMs_ = scanning ? 1 : 0;
         scanStartChimeMuteReadyAtMs_ = 0;
+        scanStartChimePlaybackWaitUntilMs_ = 0;
         scanStartChimeQueued_ = false;
+        scanStartChimePlaybackSeen_ = false;
         scanSpeakerMutedForScan_ = false;
         pendingScanUiSound_ = false;
         pendingScanUiSoundReadyAtMs_ = 0;
@@ -306,7 +311,31 @@ void AppController::handleScanAudioState() {
         }
 
         scanStartChimeQueued_ = true;
-        scanStartChimeMuteReadyAtMs_ = millis() + kScanStartSpeakerHoldMs;
+        scanStartChimePlaybackSeen_ = false;
+        scanStartChimeMuteReadyAtMs_ = 0;
+        scanStartChimePlaybackWaitUntilMs_ = millis() + kScanStartPlaybackStartFallbackMs;
+        return;
+    }
+
+    if (!scanStartChimePlaybackSeen_) {
+        if (audioIsRunning()) {
+            scanStartChimePlaybackSeen_ = true;
+            scanStartChimePlaybackWaitUntilMs_ = 0;
+            scanStartChimeMuteReadyAtMs_ = millis() + kScanStartSpeakerHoldMs;
+            return;
+        }
+
+        if (scanStartChimePlaybackWaitUntilMs_ != 0 &&
+            millis() >= scanStartChimePlaybackWaitUntilMs_) {
+            Serial.println("App controller: scan_start playback was never observed; muting speaker on fallback.");
+            scanSpeakerMutedForScan_ = audioDisableOutputForCameraScan();
+            scanStartChimeQueued_ = false;
+            scanStartChimePlaybackWaitUntilMs_ = 0;
+        }
+        return;
+    }
+
+    if (audioIsRunning()) {
         return;
     }
 
@@ -314,6 +343,8 @@ void AppController::handleScanAudioState() {
         millis() >= scanStartChimeMuteReadyAtMs_) {
         scanSpeakerMutedForScan_ = audioDisableOutputForCameraScan();
         scanStartChimeMuteReadyAtMs_ = 0;
+        scanStartChimeQueued_ = false;
+        scanStartChimePlaybackSeen_ = false;
     }
 }
 

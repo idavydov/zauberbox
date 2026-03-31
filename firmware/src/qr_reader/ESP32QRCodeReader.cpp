@@ -15,7 +15,8 @@ ESP32QRCodeReader::ESP32QRCodeReader(CameraPins pins) : ESP32QRCodeReader(pins, 
 {
 }
 
-ESP32QRCodeReader::ESP32QRCodeReader(CameraPins pins, framesize_t frameSize) : pins(pins), frameSize(frameSize)
+ESP32QRCodeReader::ESP32QRCodeReader(CameraPins pins, framesize_t frameSize)
+    : qrCodeTaskHandler(NULL), pins(pins), frameSize(frameSize), cameraConfig{}, qrCodeQueue(NULL)
 {
   qrCodeQueue = xQueueCreate(10, sizeof(struct QRCodeData));
 }
@@ -23,6 +24,11 @@ ESP32QRCodeReader::ESP32QRCodeReader(CameraPins pins, framesize_t frameSize) : p
 ESP32QRCodeReader::~ESP32QRCodeReader()
 {
   end();
+  if (qrCodeQueue != NULL)
+  {
+    vQueueDelete(qrCodeQueue);
+    qrCodeQueue = NULL;
+  }
 }
 
 QRCodeReaderSetupErr ESP32QRCodeReader::setup()
@@ -52,8 +58,6 @@ QRCodeReaderSetupErr ESP32QRCodeReader::setup()
   cameraConfig.pin_reset = pins.RESET_GPIO_NUM;
   cameraConfig.xclk_freq_hz = 10000000;
   cameraConfig.pixel_format = PIXFORMAT_GRAYSCALE;
-
-  //cameraConfig.frame_size = FRAMESIZE_VGA;
   cameraConfig.frame_size = frameSize;
   cameraConfig.jpeg_quality = 15;
   cameraConfig.fb_count = 1;
