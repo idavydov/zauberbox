@@ -231,7 +231,14 @@ bool QrService::parseAlbumId(const char *payload, String *albumId) {
         return false;
     }
 
-    const String candidate = payloadString.substring(strlen(kPrefix));
+    String candidate = payloadString.substring(strlen(kPrefix));
+    if (candidate.isEmpty()) {
+        return false;
+    }
+
+    if (candidate.endsWith("/")) {
+        candidate.remove(candidate.length() - 1);
+    }
     if (candidate.isEmpty()) {
         return false;
     }
