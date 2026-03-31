@@ -284,12 +284,16 @@ void AppController::handleScanAudioState() {
             scanStartChimePlaybackSeen_ = true;
             scanStartChimePlaybackWaitUntilMs_ = 0;
             scanStartChimeMuteReadyAtMs_ = millis() + kScanStartSpeakerHoldMs;
+            Serial.printf("[%lu] App controller: scan_start playback observed; mute scheduled for %lu.\n",
+                          static_cast<unsigned long>(millis()),
+                          static_cast<unsigned long>(scanStartChimeMuteReadyAtMs_));
             return;
         }
 
         if (scanStartChimePlaybackWaitUntilMs_ != 0 &&
             millis() >= scanStartChimePlaybackWaitUntilMs_) {
-            Serial.println("App controller: scan_start playback was never observed; muting speaker on fallback.");
+            Serial.printf("[%lu] App controller: scan_start playback was never observed; muting speaker on fallback.\n",
+                          static_cast<unsigned long>(millis()));
             speakerMuted_ = audioDisableOutputForCameraScan();
             scanStartChimeQueued_ = false;
             scanStartChimePlaybackSeen_ = false;

@@ -147,7 +147,8 @@ bool enableSpeaker() {
 
     delay(50);
     gSpeakerEnabled = true;
-    Serial.println("Speaker enabled via TCA9555 EXIO8.");
+    Serial.printf("[%lu] Speaker enabled via TCA9555 EXIO8.\n",
+                  static_cast<unsigned long>(millis()));
     return true;
 }
 
@@ -164,7 +165,8 @@ bool disableSpeaker() {
 
     delay(20);
     gSpeakerEnabled = false;
-    Serial.println("Speaker disabled via TCA9555 EXIO8.");
+    Serial.printf("[%lu] Speaker disabled via TCA9555 EXIO8.\n",
+                  static_cast<unsigned long>(millis()));
     return true;
 }
 
@@ -192,7 +194,9 @@ bool playRequest(const AudioPlaybackRequest &request) {
         return false;
     }
 
-    Serial.printf("Playing audio: %s\n", request.path);
+    Serial.printf("[%lu] Playing audio: %s\n",
+                  static_cast<unsigned long>(millis()),
+                  request.path);
     return true;
 }
 
