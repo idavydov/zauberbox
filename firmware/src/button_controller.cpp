@@ -6,7 +6,9 @@
 
 namespace {
 
-constexpr uint32_t kKeyHoldMs = 3000;
+constexpr uint32_t kBootHoldMs = 3000;
+constexpr uint32_t kMediaKeyHoldMs = 600;
+constexpr uint32_t kKeyRepeatMs = 250;
 constexpr uint32_t kPollIntervalMs = 20;
 constexpr uint32_t kDebounceMs = 30;
 constexpr uint32_t kButtonEventQueueDepth = 8;
@@ -34,9 +36,15 @@ const char *pressKindName(ButtonPressKind pressKind) {
             return "short";
         case ButtonPressKind::LongPress:
             return "long";
+        case ButtonPressKind::Repeat:
+            return "repeat";
     }
 
     return "unknown";
+}
+
+uint32_t holdThresholdMs(ButtonId buttonId) {
+    return buttonId == ButtonId::Boot ? kBootHoldMs : kMediaKeyHoldMs;
 }
 
 } // namespace
@@ -72,7 +80,7 @@ bool ButtonController::pollEvent(ButtonEvent *event) const {
 }
 
 bool ButtonController::waitForFactoryResetRequest(uint32_t holdMs) const {
-    const uint32_t requiredHoldMs = holdMs == 0 ? kKeyHoldMs : holdMs;
+    const uint32_t requiredHoldMs = holdMs == 0 ? kBootHoldMs : holdMs;
     if (!appStateStore().allowsFactoryReset() || !isButtonPressed(kIoExpanderKey1Pin)) {
         return false;
     }
@@ -102,6 +110,7 @@ void ButtonController::runTask() {
             .longDispatched = false,
             .lastRawChangeAtMs = 0,
             .pressedAtMs = 0,
+            .lastRepeatAtMs = 0,
         },
         {
             .buttonId = ButtonId::Key1,
@@ -111,6 +120,7 @@ void ButtonController::runTask() {
             .longDispatched = false,
             .lastRawChangeAtMs = 0,
             .pressedAtMs = 0,
+            .lastRepeatAtMs = 0,
         },
         {
             .buttonId = ButtonId::Key2,
@@ -120,6 +130,7 @@ void ButtonController::runTask() {
             .longDispatched = false,
             .lastRawChangeAtMs = 0,
             .pressedAtMs = 0,
+            .lastRepeatAtMs = 0,
         },
         {
             .buttonId = ButtonId::Key3,
@@ -129,6 +140,7 @@ void ButtonController::runTask() {
             .longDispatched = false,
             .lastRawChangeAtMs = 0,
             .pressedAtMs = 0,
+            .lastRepeatAtMs = 0,
         },
     };
 
@@ -153,6 +165,7 @@ void ButtonController::runTask() {
                 if (button.stablePressed) {
                     button.pressedAtMs = now;
                     button.longDispatched = false;
+                    button.lastRepeatAtMs = 0;
                     if (button.buttonId == ButtonId::Boot) {
                         dispatchEvent({
                             .buttonId = button.buttonId,
@@ -169,11 +182,24 @@ void ButtonController::runTask() {
 
             if (button.stablePressed &&
                 !button.longDispatched &&
-                now - button.pressedAtMs >= kKeyHoldMs) {
+                now - button.pressedAtMs >= holdThresholdMs(button.buttonId)) {
                 button.longDispatched = true;
+                button.lastRepeatAtMs = now;
                 dispatchEvent({
                     .buttonId = button.buttonId,
                     .pressKind = ButtonPressKind::LongPress,
+                });
+                continue;
+            }
+
+            if (button.stablePressed &&
+                button.longDispatched &&
+                button.buttonId != ButtonId::Boot &&
+                now - button.lastRepeatAtMs >= kKeyRepeatMs) {
+                button.lastRepeatAtMs = now;
+                dispatchEvent({
+                    .buttonId = button.buttonId,
+                    .pressKind = ButtonPressKind::Repeat,
                 });
             }
         }

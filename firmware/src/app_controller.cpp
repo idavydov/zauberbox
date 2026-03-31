@@ -104,23 +104,25 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
             break;
         case ButtonId::Key1:
             if (event.pressKind == ButtonPressKind::ShortPress) {
-                (void)mediaService_.changeVolume(-1);
-            } else {
                 (void)mediaService_.previousTrackOrRestart();
+            } else if (event.pressKind == ButtonPressKind::LongPress ||
+                       event.pressKind == ButtonPressKind::Repeat) {
+                (void)mediaService_.changeVolume(-1);
             }
             break;
         case ButtonId::Key2:
             if (event.pressKind == ButtonPressKind::ShortPress) {
                 (void)mediaService_.togglePause();
-            } else {
+            } else if (event.pressKind == ButtonPressKind::LongPress) {
                 (void)mediaService_.stopAlbum();
             }
             break;
         case ButtonId::Key3:
             if (event.pressKind == ButtonPressKind::ShortPress) {
-                (void)mediaService_.changeVolume(1);
-            } else {
                 (void)mediaService_.nextTrack();
+            } else if (event.pressKind == ButtonPressKind::LongPress ||
+                       event.pressKind == ButtonPressKind::Repeat) {
+                (void)mediaService_.changeVolume(1);
             }
             break;
     }

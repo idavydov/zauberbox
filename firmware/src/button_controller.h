@@ -14,6 +14,7 @@ enum class ButtonPressKind : uint8_t {
     PressDown,
     ShortPress,
     LongPress,
+    Repeat,
 };
 
 struct ButtonEvent {
@@ -37,6 +38,7 @@ class ButtonController {
         bool longDispatched;
         uint32_t lastRawChangeAtMs;
         uint32_t pressedAtMs;
+        uint32_t lastRepeatAtMs;
     };
 
     static void taskEntry(void *context);
