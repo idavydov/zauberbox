@@ -55,6 +55,7 @@ bool gSuppressFinishedCallback = false;
 uint8_t gCurrentVolume = kPlaybackVolume;
 bool gAudioInitialized = false;
 bool gSpeakerEnabled = false;
+bool gPlaybackPaused = false;
 
 fs::FS *filesystemForStorage(AudioStorage storage) {
     switch (storage) {
@@ -239,6 +240,7 @@ void audioServiceTask(void *pvParameters) {
                         gSuppressFinishedCallback = true;
                         gFilePlayer.stopSong();
                     }
+                    gPlaybackPaused = false;
                     break;
                 case AudioCommandType::Stop:
                     pendingRequests.clear();
@@ -246,10 +248,22 @@ void audioServiceTask(void *pvParameters) {
                         gSuppressFinishedCallback = true;
                         gFilePlayer.stopSong();
                     }
+                    gPlaybackPaused = false;
                     break;
                 case AudioCommandType::TogglePause:
+                    if (gPlaybackPaused) {
+                        if (!enableSpeaker()) {
+                            break;
+                        }
+                        (void)gFilePlayer.pauseResume();
+                        gPlaybackPaused = false;
+                        break;
+                    }
+
                     if (gFilePlayer.isRunning()) {
                         (void)gFilePlayer.pauseResume();
+                        gPlaybackPaused = true;
+                        (void)disableSpeaker();
                     }
                     break;
                 case AudioCommandType::SetVolume:
@@ -266,6 +280,7 @@ void audioServiceTask(void *pvParameters) {
         const bool isRunning = gFilePlayer.isRunning();
 
         if (wasRunning && !isRunning) {
+            gPlaybackPaused = false;
             if (gSuppressFinishedCallback) {
                 gSuppressFinishedCallback = false;
             } else if (gPlaybackFinishedCallback) {
@@ -276,6 +291,7 @@ void audioServiceTask(void *pvParameters) {
         if (!isRunning && !pendingRequests.empty()) {
             const AudioPlaybackRequest nextRequest = pendingRequests.front();
             pendingRequests.pop_front();
+            gPlaybackPaused = false;
             (void)playRequest(nextRequest);
         }
     }
