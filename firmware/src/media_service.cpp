@@ -44,11 +44,12 @@ bool MediaService::begin() {
 }
 
 void MediaService::update() {
-    if (!playbackFinished_.exchange(false)) {
+    const int eventValue = playbackFinishedEvent_.exchange(-1);
+    if (eventValue < 0) {
         return;
     }
 
-    handlePlaybackFinished();
+    handlePlaybackFinished(static_cast<AudioPlaybackEvent>(eventValue));
 }
 
 bool MediaService::playWifiConnectedSound() {
@@ -179,12 +180,12 @@ bool MediaService::isStorageReady() const {
     return storageReady_;
 }
 
-void MediaService::handlePlaybackFinishedStatic() {
+void MediaService::handlePlaybackFinishedStatic(AudioPlaybackEvent event) {
     if (!activeInstance_) {
         return;
     }
 
-    activeInstance_->playbackFinished_.store(true);
+    activeInstance_->playbackFinishedEvent_.store(static_cast<int>(event));
 }
 
 const char *MediaService::uiSoundPath(UiSound sound) {
@@ -324,15 +325,25 @@ bool MediaService::startCurrentTrack() {
     return true;
 }
 
-void MediaService::handlePlaybackFinished() {
+void MediaService::handlePlaybackFinished(AudioPlaybackEvent event) {
     if (!albumActive_ || paused_) {
         return;
     }
 
-    if (currentTrackIndex_ + 1 < trackPaths_.size()) {
+    if (event == AudioPlaybackEvent::Failed) {
+        Serial.printf("Media service: track failed in album %s at index %u\n",
+                      currentAlbumId_.c_str(),
+                      static_cast<unsigned>(currentTrackIndex_ + 1));
+    }
+
+    while (currentTrackIndex_ + 1 < trackPaths_.size()) {
         currentTrackIndex_++;
-        (void)startCurrentTrack();
-        return;
+        if (startCurrentTrack()) {
+            return;
+        }
+        Serial.printf("Media service: skipping bad track %u/%u\n",
+                      static_cast<unsigned>(currentTrackIndex_ + 1),
+                      static_cast<unsigned>(trackPaths_.size()));
     }
 
     Serial.printf("Media service: album finished: %s\n", currentAlbumId_.c_str());
@@ -341,5 +352,8 @@ void MediaService::handlePlaybackFinished() {
     trackPaths_.clear();
     currentAlbumId_ = "";
     currentTrackIndex_ = 0;
-    appStateStore().transitionTo(AppState::Idle);
+    const bool moved = appStateStore().transitionTo(AppState::Idle);
+    if (!moved) {
+        Serial.println("Media service: Idle transition rejected.");
+    }
 }

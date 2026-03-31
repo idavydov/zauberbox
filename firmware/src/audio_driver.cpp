@@ -51,11 +51,11 @@ Audio gFilePlayer(kI2SPort);
 QueueHandle_t gAudioCommandQueue = nullptr;
 TaskHandle_t gAudioServiceTask = nullptr;
 AudioPlaybackFinishedCallback gPlaybackFinishedCallback = nullptr;
-bool gSuppressFinishedCallback = false;
 uint8_t gCurrentVolume = kPlaybackVolume;
 bool gAudioInitialized = false;
 bool gSpeakerEnabled = false;
 bool gPlaybackPaused = false;
+bool gAwaitingNaturalPlaybackEnd = false;
 
 fs::FS *filesystemForStorage(AudioStorage storage) {
     switch (storage) {
@@ -201,6 +201,26 @@ bool playRequest(const AudioPlaybackRequest &request) {
     return true;
 }
 
+void handlePlaybackEvent(AudioPlaybackEvent event) {
+    gAwaitingNaturalPlaybackEnd = false;
+    gPlaybackPaused = false;
+    if (gPlaybackFinishedCallback) {
+        gPlaybackFinishedCallback(event);
+    }
+}
+
+void handleAudioInfo(Audio::msg_t msg) {
+    if (msg.e != Audio::evt_eof) {
+        return;
+    }
+
+    if (!gAwaitingNaturalPlaybackEnd) {
+        return;
+    }
+
+    handlePlaybackEvent(AudioPlaybackEvent::Finished);
+}
+
 void fillRequest(AudioPlaybackRequest *request, AudioStorage storage, const char *path) {
     if (!request) {
         return;
@@ -237,17 +257,17 @@ void audioServiceTask(void *pvParameters) {
                     pendingRequests.clear();
                     pendingRequests.push_back(command.request);
                     if (gFilePlayer.isRunning()) {
-                        gSuppressFinishedCallback = true;
                         gFilePlayer.stopSong();
                     }
+                    gAwaitingNaturalPlaybackEnd = false;
                     gPlaybackPaused = false;
                     break;
                 case AudioCommandType::Stop:
                     pendingRequests.clear();
                     if (gFilePlayer.isRunning()) {
-                        gSuppressFinishedCallback = true;
                         gFilePlayer.stopSong();
                     }
+                    gAwaitingNaturalPlaybackEnd = false;
                     gPlaybackPaused = false;
                     break;
                 case AudioCommandType::TogglePause:
@@ -281,18 +301,17 @@ void audioServiceTask(void *pvParameters) {
 
         if (wasRunning && !isRunning) {
             gPlaybackPaused = false;
-            if (gSuppressFinishedCallback) {
-                gSuppressFinishedCallback = false;
-            } else if (gPlaybackFinishedCallback) {
-                gPlaybackFinishedCallback();
-            }
         }
 
         if (!isRunning && !pendingRequests.empty()) {
             const AudioPlaybackRequest nextRequest = pendingRequests.front();
             pendingRequests.pop_front();
             gPlaybackPaused = false;
-            (void)playRequest(nextRequest);
+            if (playRequest(nextRequest)) {
+                gAwaitingNaturalPlaybackEnd = true;
+            } else {
+                handlePlaybackEvent(AudioPlaybackEvent::Failed);
+            }
         }
     }
 }
@@ -312,6 +331,7 @@ bool audioInit() {
     if (!configurePlayer()) {
         return false;
     }
+    Audio::audio_info_callback = handleAudioInfo;
     if (!gAudioCommandQueue) {
         gAudioCommandQueue = xQueueCreate(kAudioCommandQueueDepth, sizeof(AudioCommand));
         if (!gAudioCommandQueue) {

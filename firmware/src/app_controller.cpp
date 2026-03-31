@@ -95,6 +95,14 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
     }
 
     const AppState state = appStateStore().current();
+    if (state == AppState::Idle) {
+        if (event.buttonId == ButtonId::Key2 &&
+            event.pressKind == ButtonPressKind::LongPress) {
+            (void)appStateStore().transitionTo(AppState::QrScan);
+        }
+        return;
+    }
+
     if (state != AppState::Playing && state != AppState::Paused) {
         return;
     }

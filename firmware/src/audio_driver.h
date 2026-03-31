@@ -7,7 +7,12 @@ enum class AudioStorage : uint8_t {
     SdCard,
 };
 
-using AudioPlaybackFinishedCallback = void (*)();
+enum class AudioPlaybackEvent : uint8_t {
+    Finished,
+    Failed,
+};
+
+using AudioPlaybackFinishedCallback = void (*)(AudioPlaybackEvent event);
 
 bool audioInit();
 bool audioDisableOutputForCameraScan();

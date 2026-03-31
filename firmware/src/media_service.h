@@ -5,6 +5,8 @@
 #include <atomic>
 #include <vector>
 
+#include "audio_driver.h"
+
 enum class UiSound : uint8_t {
     ScanStart,
     WifiConnected,
@@ -33,18 +35,18 @@ class MediaService {
     bool isStorageReady() const;
 
   private:
-    static void handlePlaybackFinishedStatic();
+    static void handlePlaybackFinishedStatic(AudioPlaybackEvent event);
     static const char *uiSoundPath(UiSound sound);
     static bool isSupportedAudioFile(const String &path);
 
     bool mountStorage();
     bool loadAlbumTracks(const char *albumId);
     bool startCurrentTrack();
-    void handlePlaybackFinished();
+    void handlePlaybackFinished(AudioPlaybackEvent event);
 
     static MediaService *activeInstance_;
 
-    std::atomic<bool> playbackFinished_ = false;
+    std::atomic<int> playbackFinishedEvent_ = {-1};
     std::vector<String> trackPaths_;
     String currentAlbumId_;
     size_t currentTrackIndex_ = 0;
