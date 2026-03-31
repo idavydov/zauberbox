@@ -33,7 +33,7 @@ void LedController::taskEntry(void *context) {
 }
 
 void LedController::runTask() {
-    uint8_t hue = 0;
+    uint16_t hue = 0;
     uint8_t scanFrame = 0;
 
     while (true) {
@@ -90,8 +90,8 @@ void LedController::runTask() {
                     ring_.setPixelColor(i, ring_.gamma32(ring_.ColorHSV(hue + (i * 65536 / kLedCount))));
                 }
                 ring_.show();
-                hue += 256;
-                vTaskDelay(pdMS_TO_TICKS(20));
+                hue += 240;
+                vTaskDelay(pdMS_TO_TICKS(35));
                 break;
             }
             case AppState::Paused: {
