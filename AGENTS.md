@@ -14,6 +14,8 @@
 
 # Platformio
 - Libraries should be added via platformio.ini libraries
+- `firmware/sdkconfig.waveshare_s3_audio` is a generated file, it should
+  not be edited; regenerate instead if needed
 
 # Vendoring
 - When vendoring new code make sure to include copyrights/license
