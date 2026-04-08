@@ -8,6 +8,11 @@ const API_BASE = '/api';
 const COVER_MAX_DIMENSION = 1600;
 const COVER_JPEG_QUALITIES = [0.82, 0.72, 0.62];
 const COVER_TARGET_MAX_BYTES = 900 * 1024;
+const PRINT_DPI = 300;
+const MM_TO_INCH = 25.4;
+const TILE_WIDTH_MM = 100;
+const TILE_HEIGHT_MM = 50;
+const SHEET_ROWS = 3;
 let state = {
     view: 'dashboard',
     currentPath: null,
@@ -255,11 +260,11 @@ async function handleUpload(files, forcedType = null) {
     enterDirectory(state.currentPath);
 }
 
-async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset, width, height) {
-    const QR_WIDTH_RATIO = 0.33;
-    const QR_SECTION_WIDTH = Math.round(width * QR_WIDTH_RATIO);
-    const COVER_WIDTH = width - QR_SECTION_WIDTH;
+function mmToPx(mm) {
+    return Math.round((mm / MM_TO_INCH) * PRINT_DPI);
+}
 
+async function loadCoverImage(dirName, coverUrl) {
     const img = new Image();
     img.crossOrigin = "anonymous";
     await new Promise((resolve, reject) => {
@@ -267,81 +272,134 @@ async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset
         img.onerror = () => reject(new Error(`Failed to load cover: ${dirName}`));
         img.src = coverUrl;
     });
+    return img;
+}
 
+function drawSquareCover(ctx, img, xOffset, yOffset, size) {
     const imgAspect = img.width / img.height;
-    const targetAspect = COVER_WIDTH / height;
-    let sx, sy, sWidth, sHeight;
+    let sx;
+    let sy;
+    let sWidth;
+    let sHeight;
 
-    if (imgAspect > targetAspect) {
+    if (imgAspect > 1) {
         sHeight = img.height;
-        sWidth = img.height * targetAspect;
+        sWidth = img.height;
         sx = (img.width - sWidth) / 2;
         sy = 0;
     } else {
         sWidth = img.width;
-        sHeight = img.width / targetAspect;
+        sHeight = img.width;
         sx = 0;
         sy = (img.height - sHeight) / 2;
     }
-    ctx.drawImage(img, sx, sy, sWidth, sHeight, xOffset, yOffset, COVER_WIDTH, height);
 
-    const colors = getDominantColors(ctx, width, height, xOffset, yOffset);
-    const noiseCanvas = document.createElement('canvas');
-    noiseCanvas.width = 5;
-    noiseCanvas.height = 5;
-    const noiseCtx = noiseCanvas.getContext('2d');
-    for (let y = 0; y < 5; y++) {
-        for (let x = 0; x < 5; x++) {
-            noiseCtx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-            noiseCtx.fillRect(x, y, 1, 1);
+    ctx.drawImage(img, sx, sy, sWidth, sHeight, xOffset, yOffset, size, size);
+}
+
+function drawTextWithOutline(ctx, text, x, y) {
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, x, y);
+}
+
+function fitTextToWidth(ctx, text, baseSize, maxWidth, fontWeight = '') {
+    const minSize = Math.max(14, Math.round(baseSize * 0.65));
+    let fontSize = baseSize;
+
+    while (fontSize > minSize) {
+        ctx.font = `${fontWeight}${fontSize}px sans-serif`;
+        if (ctx.measureText(text).width <= maxWidth) {
+            return { text, fontSize };
         }
+        fontSize -= 1;
     }
 
-    ctx.save();
-    if (ctx.filter !== undefined) {
-        ctx.filter = `blur(${QR_SECTION_WIDTH / 4}px)`;
+    ctx.font = `${fontWeight}${minSize}px sans-serif`;
+    if (ctx.measureText(text).width <= maxWidth) {
+        return { text, fontSize: minSize };
     }
-    ctx.drawImage(noiseCanvas, xOffset + COVER_WIDTH - 10, yOffset - 10, QR_SECTION_WIDTH + 20, height + 20);
-    ctx.restore();
 
+    let truncated = text;
+    while (truncated.length > 1 && ctx.measureText(`${truncated}...`).width > maxWidth) {
+        truncated = truncated.slice(0, -1);
+    }
+
+    return {
+        text: truncated.length < text.length ? `${truncated}...` : truncated,
+        fontSize: minSize
+    };
+}
+
+function drawCoverText(ctx, mp3s, xOffset, yOffset, size) {
+    if (mp3s.length === 0) {
+        return;
+    }
+
+    const padding = Math.max(18, Math.round(size * 0.05));
+    const singleTrackSize = Math.max(22, Math.round(size * 0.062));
+    const multiTrackSize = Math.max(18, Math.round(size * 0.05));
+    const lineGap = Math.max(6, Math.round(size * 0.012));
+    const baseTrackSize = mp3s.length === 1 ? singleTrackSize : multiTrackSize;
+    const maxTrackLines = Math.max(1, Math.floor((size - padding * 2) / (baseTrackSize + lineGap)));
+    const visibleTracks = mp3s.slice(0, maxTrackLines);
+    const overlayHeight = padding * 2 + visibleTracks.length * (baseTrackSize + lineGap);
+    const maxTextWidth = size - padding * 2 - 8;
+
+    const gradient = ctx.createLinearGradient(0, yOffset + size - overlayHeight, 0, yOffset + size);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.78)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(xOffset, yOffset + size - overlayHeight, size, overlayHeight);
+
+    ctx.textBaseline = 'alphabetic';
+    let currentY = yOffset + size - overlayHeight + padding + baseTrackSize;
+    visibleTracks.forEach((track) => {
+        const fitted = fitTextToWidth(ctx, track, baseTrackSize, maxTextWidth, mp3s.length === 1 ? 'bold ' : '');
+        ctx.font = `${mp3s.length === 1 ? 'bold ' : ''}${fitted.fontSize}px sans-serif`;
+        drawTextWithOutline(ctx, fitted.text, xOffset + padding, currentY);
+        currentY += baseTrackSize + lineGap;
+    });
+}
+
+async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset, width, height) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(xOffset, yOffset, width, height);
+
+    const img = await loadCoverImage(dirName, coverUrl);
+    const squareSize = Math.min(height, width / 2);
+    const contentX = xOffset + (width - squareSize * 2) / 2;
+    const squareY = yOffset + (height - squareSize) / 2;
+    const previewX = contentX;
+    const qrSquareX = contentX + squareSize;
+
+    drawSquareCover(ctx, img, previewX, squareY, squareSize);
+    drawCoverText(ctx, mp3s, previewX, squareY, squareSize);
+
+    const qrQuietZone = Math.max(12, Math.round(squareSize * 0.08));
+    const qrSize = squareSize - (qrQuietZone * 2);
     const uri = `file://${dirName}`;
-    const qrSize = Math.min(QR_SECTION_WIDTH, height) * 0.8;
     const qrContainer = document.createElement('div');
     new QRCode(qrContainer, {
         text: uri,
         width: qrSize,
         height: qrSize,
-        colorDark : "#000000",
-        colorLight : "#ffffff",
-        correctLevel : QRCode.CorrectLevel.H
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
     });
 
     await new Promise(resolve => setTimeout(resolve, 50));
     const qrCanvas = qrContainer.querySelector('canvas');
-    const qrX = xOffset + COVER_WIDTH + (QR_SECTION_WIDTH - qrSize) / 2;
-    const qrY = yOffset + (height - qrSize) / 2;
+    const qrX = qrSquareX + (squareSize - qrSize) / 2;
+    const qrY = squareY + (squareSize - qrSize) / 2;
     ctx.drawImage(qrCanvas, qrX, qrY);
-
-    if (mp3s.length > 0) {
-        const fontSize = 24;
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.textBaseline = 'bottom';
-        const margin = 15;
-        const lineHeight = fontSize + 4;
-        const maxTracks = Math.floor((height - (margin * 2)) / lineHeight);
-        const visibleTracks = mp3s.slice(0, maxTracks);
-        const totalTextHeight = visibleTracks.length * lineHeight;
-        let currentY = yOffset + height - margin - totalTextHeight + fontSize;
-
-        visibleTracks.forEach(track => {
-            drawTextWithOutline(ctx, track, xOffset + margin, currentY);
-            currentY += lineHeight;
-        });
-    }
 }
 
 async function handleGenerateCard() {
-    const currentDir = state.directories.find(d => d.name === state.currentPath);
     const coverUrl = state.files.find(f => f.name.toLowerCase() === 'cover.jpg')
         ? `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent('cover.jpg')}`
         : null;
@@ -354,10 +412,8 @@ async function handleGenerateCard() {
     state.loading = true; render();
 
     try {
-        const DPI = 300;
-        const MM_TO_INCH = 25.4;
-        const WIDTH_PX = Math.round((76 / MM_TO_INCH) * DPI);
-        const HEIGHT_PX = Math.round((34 / MM_TO_INCH) * DPI);
+        const WIDTH_PX = mmToPx(TILE_WIDTH_MM);
+        const HEIGHT_PX = mmToPx(TILE_HEIGHT_MM);
 
         const canvas = document.createElement('canvas');
         canvas.width = WIDTH_PX;
@@ -373,12 +429,12 @@ async function handleGenerateCard() {
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         const link = document.createElement('a');
-        link.download = `card_${state.currentPath}.jpg`;
+        link.download = `tile_${state.currentPath}.jpg`;
         link.href = dataUrl;
         link.click();
 
     } catch (err) {
-        await showModal({ title: 'Error', message: 'Failed to generate card.', confirmText: 'OK', showCancel: false });
+        await showModal({ title: 'Error', message: 'Failed to generate tile.', confirmText: 'OK', showCancel: false });
     } finally {
         state.loading = false; render();
     }
@@ -388,16 +444,14 @@ async function handleDownloadSheets() {
     if (state.selectedDirs.size === 0) return;
     state.loading = true; render();
     try {
-        const DPI = 300;
-        const MM_TO_INCH = 25.4;
-        const CARD_W_PX = Math.round((76 / MM_TO_INCH) * DPI);
-        const CARD_H_PX = Math.round((34 / MM_TO_INCH) * DPI);
-        const WIDTH_PX = Math.round((152 / MM_TO_INCH) * DPI);
-        const HEIGHT_PX = Math.round((102 / MM_TO_INCH) * DPI);
+        const TILE_W_PX = mmToPx(TILE_WIDTH_MM);
+        const TILE_H_PX = mmToPx(TILE_HEIGHT_MM);
+        const WIDTH_PX = TILE_W_PX;
+        const HEIGHT_PX = TILE_H_PX * SHEET_ROWS;
 
         const selectedNames = Array.from(state.selectedDirs);
-        for (let i = 0; i < selectedNames.length; i += 6) {
-            const chunk = selectedNames.slice(i, i + 6);
+        for (let i = 0; i < selectedNames.length; i += SHEET_ROWS) {
+            const chunk = selectedNames.slice(i, i + SHEET_ROWS);
             const canvas = document.createElement('canvas');
             canvas.width = WIDTH_PX; canvas.height = HEIGHT_PX;
             const ctx = canvas.getContext('2d');
@@ -407,40 +461,30 @@ async function handleDownloadSheets() {
                 const name = chunk[j];
                 const files = await fetchAPI(`/files?path=${encodeURIComponent(name)}`);
                 const coverUrl = `${API_BASE}/file?path=${encodeURIComponent(name)}&name=${encodeURIComponent('cover.jpg')}`;
-                const mp3s = files.filter(f => f.name.toLowerCase().endsWith('.mp3')).map(f => f.name.replace(/\.mp3$/i, '')).sort();
-                await generateSingleCard(ctx, name, coverUrl, mp3s, (j % 2) * CARD_W_PX, Math.floor(j / 2) * CARD_H_PX, CARD_W_PX, CARD_H_PX);
+                const hasCover = files.some(f => f.name.toLowerCase() === 'cover.jpg');
+                const mp3s = files
+                    .filter(f => f.name.toLowerCase().endsWith('.mp3'))
+                    .map(f => f.name.replace(/\.mp3$/i, ''))
+                    .sort();
+                if (!hasCover) {
+                    throw new Error(`Missing cover image for ${name}`);
+                }
+                await generateSingleCard(ctx, name, coverUrl, mp3s, 0, j * TILE_H_PX, TILE_W_PX, TILE_H_PX);
             }
 
-            // Add 0.5mm white lines between cards
-            const SEPARATOR_PX = Math.round((0.5 / MM_TO_INCH) * DPI);
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = SEPARATOR_PX;
-            
-            // Vertical separator
-            ctx.beginPath();
-            ctx.moveTo(CARD_W_PX, 0);
-            ctx.lineTo(CARD_W_PX, HEIGHT_PX);
-            ctx.stroke();
-
-            // Horizontal separators
-            ctx.beginPath();
-            ctx.moveTo(0, CARD_H_PX);
-            ctx.lineTo(WIDTH_PX, CARD_H_PX);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(0, CARD_H_PX * 2);
-            ctx.lineTo(WIDTH_PX, CARD_H_PX * 2);
-            ctx.stroke();
-
-            // Add 1mm white frame around the sheet
-            const FRAME_PX = Math.round((1 / MM_TO_INCH) * DPI);
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = FRAME_PX * 2;
-            ctx.strokeRect(0, 0, WIDTH_PX, HEIGHT_PX);
+            const separatorPx = Math.max(1, Math.round((0.2 / MM_TO_INCH) * PRINT_DPI));
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = separatorPx;
+            for (let row = 1; row < SHEET_ROWS; row++) {
+                const y = row * TILE_H_PX;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(WIDTH_PX, y);
+                ctx.stroke();
+            }
 
             const link = document.createElement('a');
-            link.download = `sheet_${Math.floor(i/6) + 1}.jpg`;
+            link.download = `sheet_${Math.floor(i / SHEET_ROWS) + 1}.jpg`;
             link.href = canvas.toDataURL('image/jpeg', 0.95);
             link.click();
             await new Promise(r => setTimeout(r, 500));
@@ -452,26 +496,6 @@ async function handleDownloadSheets() {
     } finally {
         state.loading = false; render();
     }
-}
-
-function getDominantColors(ctx, width, height, xOffset = 0, yOffset = 0) {
-    const data = ctx.getImageData(xOffset, yOffset, width, height).data;
-    const sampleCount = 100;
-    const colors = [];
-    for (let i = 0; i < sampleCount; i++) {
-        const idx = Math.floor(Math.random() * (data.length / 4)) * 4;
-        colors.push(`rgb(${data[idx]}, ${data[idx+1]}, ${data[idx+2]})`);
-    }
-    return colors;
-}
-
-function drawTextWithOutline(ctx, text, x, y) {
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 3;
-    ctx.lineJoin = 'round';
-    ctx.strokeText(text, x, y);
-    ctx.fillStyle = 'white';
-    ctx.fillText(text, x, y);
 }
 
 async function convertToJpeg(file) {
@@ -582,7 +606,7 @@ function render() {
             <li><strong>${state.currentPath}</strong></li>
         `;
         navRight.innerHTML = `
-            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate Card Image">${ICONS.image} Card</button></li>
+            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate Tile Image">${ICONS.image} Tile</button></li>
         `;
         
         let html = `
