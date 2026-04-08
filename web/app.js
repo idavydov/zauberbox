@@ -440,6 +440,28 @@ async function handleGenerateCard() {
     }
 }
 
+function drawSheetGuides(ctx, width, height, rowHeight, rowCount) {
+    const guideWidthPx = Math.max(1, mmToPx(0.2));
+    const inset = guideWidthPx / 2;
+    const maxX = Math.max(inset, width - inset);
+    const maxY = Math.max(inset, height - inset);
+
+    ctx.save();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = guideWidthPx;
+
+    for (let row = 1; row < rowCount; row++) {
+        const y = Math.min(maxY, Math.max(inset, row * rowHeight));
+        ctx.beginPath();
+        ctx.moveTo(inset, y);
+        ctx.lineTo(maxX, y);
+        ctx.stroke();
+    }
+
+    ctx.strokeRect(inset, inset, Math.max(0, width - guideWidthPx), Math.max(0, height - guideWidthPx));
+    ctx.restore();
+}
+
 async function handleDownloadSheets() {
     if (state.selectedDirs.size === 0) return;
     state.loading = true; render();
@@ -472,16 +494,7 @@ async function handleDownloadSheets() {
                 await generateSingleCard(ctx, name, coverUrl, mp3s, 0, j * TILE_H_PX, TILE_W_PX, TILE_H_PX);
             }
 
-            const separatorPx = Math.max(1, Math.round((0.2 / MM_TO_INCH) * PRINT_DPI));
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = separatorPx;
-            for (let row = 1; row < SHEET_ROWS; row++) {
-                const y = row * TILE_H_PX;
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(WIDTH_PX, y);
-                ctx.stroke();
-            }
+            drawSheetGuides(ctx, WIDTH_PX, HEIGHT_PX, TILE_H_PX, SHEET_ROWS);
 
             const link = document.createElement('a');
             link.download = `sheet_${Math.floor(i / SHEET_ROWS) + 1}.jpg`;
