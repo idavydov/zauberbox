@@ -1,6 +1,8 @@
 # Zauberbox
 
-Zauberbox is a small audio player for children built on the ESP32-S3-AUDIO-Board.
+Zauberbox is a small audio player for children built on the
+[ESP32-S3-AUDIO-Board](https://www.waveshare.com/esp32-s3-audio-board.htm) and
+OV5640 camera module.
 Music and stories live on the microSD card in numbered album folders such as
 `001`, `002`, and `003`.
 
