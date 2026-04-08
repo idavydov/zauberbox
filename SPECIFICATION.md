@@ -143,8 +143,10 @@ The firmware behavior should be modeled as explicit states.
 
 ## Buttons
 
-Long-press duration for all UI button actions is 3 seconds unless specified
-otherwise.
+For the media/UI keys (`KEY1`, `KEY2`, `KEY3`), long-press duration is about
+`600 ms`.
+
+The boot-time factory-reset hold remains more than `3 seconds`.
 
 ### In `Playing` or `Paused`
 
@@ -152,9 +154,9 @@ otherwise.
   past the configured threshold, restart the current track instead.
 - `KEY3` short press: next track.
 - `KEY2` short press: toggle play/pause.
-- `KEY1` long press: decrease volume by one step.
-- `KEY3` long press: increase volume by one step.
-- `KEY2` long press: stop playback and return to `QR Scan`.
+- `KEY1` long press (`~600 ms`): decrease volume by one step.
+- `KEY3` long press (`~600 ms`): increase volume by one step.
+- `KEY2` long press (`~600 ms`): stop playback and return to `QR Scan`.
 
 ### Global
 
