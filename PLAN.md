@@ -15,15 +15,40 @@ refactor detail.
 - QR scanning works and starts SD-card album playback from `file://NNN` codes.
 - Playback controls are implemented for `Playing` and `Paused`.
 - Wi-Fi provisioning works without rebooting and returns to the portal on
-  connection failure.
+  connection failure for newly-entered credentials.
 - STA hostname and mDNS are in place.
-- Normal application web UI/server does not exist yet.
+- The normal authenticated web server exists and is served on `/` in STA mode.
+- The normal web UI exists and already covers the first scoped file-management
+  operations from the spec:
+  - list albums
+  - create albums
+  - upload files
+  - delete files
+  - rename files or albums
+  - remove albums
+- Web auth and first-login password setup exist.
+- Factory reset already removes persisted Wi-Fi credentials, web auth, and
+  runtime config.
+- `Idle -> QrScan` already has an explicit path through button handling.
 
 ## Known Constraints
 
 - Audio must be initialized after camera startup on current hardware.
-- Short UI sounds on the current file-playback path have a noticeable startup
-  latency floor of roughly `80-90 ms`.
+- Initializing audio before camera startup is known to break later
+  camera/audio behavior.
+- The confirmed bug was not generic `esp_camera_init()`. The bad path was the
+  vendored `qr_reader/ESP32QRCodeReader::setup()` camera-init path.
+- The reliable runtime design is:
+  - `QrService` owns camera init/deinit directly via `esp_camera_init()`
+  - `ESP32QRCodeReader` is used only for decode task / queue handling
+- Current tested delayed short-sound timings are:
+  - `scan_start` chime: `500 ms`
+  - other delayed short sounds: `50 ms`
+- Short UI sounds on the current file-playback path still have a measurable
+  startup latency floor of roughly `80-90 ms`; likely hardware-related and
+  impossible to reduce.
+- Speaker output should be muted while active scanning continues, then
+  re-enabled for UI sounds or playback after scan shutdown.
 - `EXIO6` is the board routing select for the camera:
   - `HIGH` routes the camera via the `TX/RX` path
   - `LOW` routes it via the USB `D+/D-` path
@@ -34,33 +59,14 @@ refactor detail.
 
 ## Remaining Work
 
-### 1. Build the Normal Wi-Fi App Server
-
-- Add the normal authenticated web server served on `/` when connected to STA.
-- Keep provisioning and the normal app server as separate code paths.
-- Implement the first scoped file-management operations from the spec:
-  - list albums
-  - create albums
-  - upload files
-  - delete files
-  - rename files or albums
-  - remove albums
-
-### 2. Finish Idle and Sleep Behavior
-
-- Make `Idle -> Sleep` timeout a real implementation, not just a state model.
-- Implement explicit wake behavior from `Sleep`.
-- Keep Wi-Fi-enabled operation awake while still allowing `QrScan -> Idle`.
-- Make the intended path from `Idle` back to `QrScan` explicit.
-
-### 3. Close the Remaining Product-Policy Gaps
+### 1. Close the Remaining Product-Policy Gaps
 
 - Finalize playback conflict policy for UI sounds versus album playback.
 - Decide whether any non-playback button behavior still belongs in `Idle`.
-- Confirm the intended QR re-scan/restart policy and document it in code.
-- Expand factory reset to all persisted settings once web/app auth exists.
+- Check if QR code scanning mode works after Idle mode.
+- More web-app settings (change password).
 
-### 4. Reduce Regression Risk
+### 2. Reduce Regression Risk
 
 - Add lightweight host-side tests for:
   - QR payload parsing
@@ -71,7 +77,6 @@ refactor detail.
 
 ## Out of Scope For Now
 
-- battery features
+- battery features, including sleep state
 - mixed audio playback
 - aggressive performance optimization
-- a large web UI before the normal app server and auth model exist
