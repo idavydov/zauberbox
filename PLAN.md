@@ -67,6 +67,7 @@ refactor detail.
 - More web-app settings (change password).
 - Web-app: fail with an error when there's no server
 - Make all the copyright messages a modal dialog
+- Turn on -> Scan -> Boot button -> Pause -> Unpause -> music doesn't continue
 
 ### 2. Reduce Regression Risk
 
