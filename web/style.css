@@ -201,6 +201,11 @@ body {
     color: var(--pico-error-background);
 }
 .cover-edit-overlay:hover, .cover-delete-overlay:hover { transform: scale(1.1); }
+.cover-edit-overlay.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+    transform: none;
+}
 
 /* Inline Upload Item */
 .upload-item {
@@ -214,7 +219,37 @@ body {
     justify-content: center;
 }
 .upload-item:hover { background: var(--pico-primary-hover); color: white; }
+.upload-item.disabled {
+    cursor: progress;
+    opacity: 0.7;
+    pointer-events: none;
+}
+.upload-item.disabled:hover {
+    background: var(--pico-primary-focus);
+    color: var(--pico-primary);
+}
 .upload-item input { display: none; }
+
+.upload-progress-card {
+    margin-bottom: 1rem;
+}
+.upload-progress-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.35rem;
+}
+.upload-progress-card progress {
+    width: 100%;
+    margin: 0.5rem 0 0.35rem;
+}
+.upload-progress-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--pico-muted-color);
+}
 
 /* Drag & Drop Overlay */
 .upload-item.drag-over::after {

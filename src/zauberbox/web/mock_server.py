@@ -94,8 +94,8 @@ def upload():
         return jsonify({"success": False, "error": "No file"}), 400
     
     file = request.files['file']
-    path = request.form.get('path', '')
-    upload_type = request.form.get('type', '')
+    path = request.args.get('path', request.form.get('path', ''))
+    upload_type = request.args.get('type', request.form.get('type', ''))
     
     target_dir = os.path.join(STORAGE_DIR, path)
     os.makedirs(target_dir, exist_ok=True)

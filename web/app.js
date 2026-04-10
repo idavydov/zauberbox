@@ -19,6 +19,7 @@ let state = {
     directories: [],
     files: [],
     loading: true,
+    upload: null,
     selectionMode: false,
     selectedDirs: new Set()
 };
@@ -127,6 +128,62 @@ async function fetchAPI(endpoint, options = {}) {
     }
 }
 
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+        return '0 B';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+
+    const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+    return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function updateUploadState(patch) {
+    if (!state.upload) {
+        return;
+    }
+    state.upload = { ...state.upload, ...patch };
+    render();
+}
+
+function uploadFile(endpoint, formData, onProgress) {
+    return new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open('POST', `${API_BASE}${endpoint}`);
+        request.responseType = 'json';
+
+        request.upload.addEventListener('progress', (event) => {
+            onProgress({
+                loaded: event.loaded,
+                total: event.lengthComputable ? event.total : null
+            });
+        });
+
+        request.addEventListener('load', () => {
+            if (request.status >= 200 && request.status < 300) {
+                resolve(request.response || { success: true });
+                return;
+            }
+
+            const message = request.response?.error
+                || request.response?.message
+                || `Upload failed (${request.status})`;
+            reject(new Error(message));
+        });
+
+        request.addEventListener('error', () => reject(new Error('Upload failed')));
+        request.addEventListener('abort', () => reject(new Error('Upload aborted')));
+        request.send(formData);
+    });
+}
+
 async function navigate() {
     const hash = window.location.hash;
     if (hash.startsWith('#/dir/')) {
@@ -232,32 +289,81 @@ async function handleDelete(fileName) {
 }
 
 async function handleUpload(files, forcedType = null) {
-    if (!files || files.length === 0) return;
-    state.loading = true; render();
-    
-    for (let file of files) {
-        const type = forcedType || 'file';
+    if (!files || files.length === 0 || state.upload || !state.currentPath) return;
+
+    const type = forcedType || 'file';
+    const targetPath = state.currentPath;
+    const preparedFiles = [];
+    for (let file of Array.from(files)) {
         const lastModifiedMs = typeof file.lastModified === 'number' && file.lastModified > 0
             ? file.lastModified
             : Date.now();
-        
-        if (type === 'cover') {
-            file = await convertToJpeg(file);
+        const uploadFileCandidate = type === 'cover'
+            ? await convertToJpeg(file)
+            : file;
+        preparedFiles.push({
+            file: uploadFileCandidate,
+            lastModifiedMs
+        });
+    }
+
+    const totalBytes = preparedFiles.reduce((sum, entry) => sum + Math.max(entry.file.size || 0, 1), 0);
+    state.upload = {
+        currentFileName: preparedFiles[0]?.file.name || '',
+        currentFileLoaded: 0,
+        currentFileSize: preparedFiles[0]?.file.size || 0,
+        completedBytes: 0,
+        completedFiles: 0,
+        totalBytes,
+        totalFiles: preparedFiles.length,
+        type
+    };
+    render();
+
+    try {
+        for (const { file, lastModifiedMs } of preparedFiles) {
+            updateUploadState({
+                currentFileName: file.name,
+                currentFileLoaded: 0,
+                currentFileSize: file.size || 0
+            });
+
+            const formData = new FormData();
+            formData.append('file', file);
+            await uploadFile(
+                `/upload?path=${encodeURIComponent(targetPath)}&type=${encodeURIComponent(type)}&last_modified_ms=${encodeURIComponent(String(lastModifiedMs))}`,
+                formData,
+                ({ loaded, total }) => {
+                    updateUploadState({
+                        currentFileLoaded: loaded,
+                        currentFileSize: total ?? file.size ?? 0
+                    });
+                }
+            );
+
+            updateUploadState({
+                completedBytes: state.upload.completedBytes + Math.max(file.size || 0, 1),
+                completedFiles: state.upload.completedFiles + 1,
+                currentFileLoaded: file.size || 0,
+                currentFileSize: file.size || 0
+            });
         }
 
-        const formData = new FormData();
-        formData.append('file', file);
-        await fetchAPI(
-            `/upload?path=${encodeURIComponent(state.currentPath)}&type=${encodeURIComponent(type)}&last_modified_ms=${encodeURIComponent(String(lastModifiedMs))}`,
-            {
-            method: 'POST',
-            body: formData
-            }
-        );
+        state.directories = await fetchAPI('/list');
+        if (state.view === 'directory' && state.currentPath === targetPath) {
+            await enterDirectory(targetPath, false);
+        }
+    } catch (err) {
+        await showModal({
+            title: 'Upload Failed',
+            message: err.message || 'Failed to upload file.',
+            confirmText: 'OK',
+            showCancel: false
+        });
+    } finally {
+        state.upload = null;
+        render();
     }
-    
-    state.directories = await fetchAPI('/list');
-    enterDirectory(state.currentPath);
 }
 
 function mmToPx(mm) {
@@ -551,7 +657,7 @@ async function convertToJpeg(file) {
 
 function setupDragAndDrop() {
     const zone = document.getElementById('drop-zone');
-    if (!zone) return;
+    if (!zone || state.upload) return;
 
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(name => {
         zone.addEventListener(name, e => { e.preventDefault(); e.stopPropagation(); });
@@ -614,6 +720,19 @@ function render() {
         }
         app.innerHTML = html;
     } else {
+        const uploadState = state.upload;
+        const uploadInProgress = Boolean(uploadState);
+        const totalBytes = uploadState ? Math.max(uploadState.totalBytes, 1) : 1;
+        const uploadedBytes = uploadState
+            ? Math.min(
+                uploadState.completedBytes + uploadState.currentFileLoaded,
+                uploadState.totalBytes
+            )
+            : 0;
+        const uploadPercent = uploadState
+            ? Math.round((uploadedBytes / totalBytes) * 100)
+            : 0;
+
         navLeft.innerHTML = `
             <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="loadDashboard()">${ICONS.back}</button></li>
             <li><strong>${state.currentPath}</strong></li>
@@ -628,6 +747,17 @@ function render() {
                     <div class="header-row">
                         <h2>Contents</h2>
                     </div>
+                    ${uploadInProgress ? `
+                    <article class="upload-progress-card">
+                        <header>
+                            <strong>Uploading ${Math.min(uploadState.totalFiles, uploadState.completedFiles + 1)} / ${uploadState.totalFiles}</strong>
+                            <span>${uploadPercent}%</span>
+                        </header>
+                        <div class="upload-progress-meta">${uploadState.currentFileName}</div>
+                        <progress value="${uploadedBytes}" max="${totalBytes}"></progress>
+                        <small>${formatBytes(uploadedBytes)} / ${formatBytes(uploadState.totalBytes)}</small>
+                    </article>
+                    ` : ''}
                     <div class="file-list">
         `;
 
@@ -668,10 +798,10 @@ function render() {
         }
 
         html += `
-                        <label id="drop-zone" class="file-item upload-item" style="border-top: 1px solid var(--pico-muted-border-color);">
-                            <input type="file" multiple onchange="handleUpload(this.files, 'file')">
+                        <label id="drop-zone" class="file-item upload-item${uploadInProgress ? ' disabled' : ''}" style="border-top: 1px solid var(--pico-muted-border-color);">
+                            <input type="file" multiple ${uploadInProgress ? 'disabled' : ''} onchange="handleUpload(this.files, 'file')">
                             <span class="file-icon">${ICONS.plus}</span>
-                            <span class="file-name">Click or Drag & Drop to Upload...</span>
+                            <span class="file-name">${uploadInProgress ? 'Upload in progress...' : 'Click or Drag & Drop to Upload...'}</span>
                         </label>
                     </div>
                 </section>
@@ -688,8 +818,8 @@ function render() {
                 <div class="cover-preview-card">
                     <div style="position:relative; margin:0 auto; max-width:100%;">
                         ${coverUrl ? `<img src="${coverUrl}">` : `<div class="placeholder-img" style="aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; background:var(--pico-secondary-focus); color:var(--pico-secondary); border-radius:8px;">No Cover</div>`}
-                        <label class="cover-edit-overlay" title="Change Cover">
-                            <input type="file" accept="image/*" style="display:none" onchange="handleUpload(this.files, 'cover')">
+                        <label class="cover-edit-overlay${uploadInProgress ? ' disabled' : ''}" title="${uploadInProgress ? 'Upload in progress' : 'Change Cover'}">
+                            <input type="file" accept="image/*" style="display:none" ${uploadInProgress ? 'disabled' : ''} onchange="handleUpload(this.files, 'cover')">
                             ${ICONS.edit}
                         </label>
                         ${coverUrl ? `
