@@ -30,7 +30,8 @@ let state = {
     debugLogsError: '',
     debugLogsUpdatedAt: 0,
     selectionMode: false,
-    selectedDirs: new Set()
+    selectedDirs: new Set(),
+    error: null
 };
 let debugPreviewTimerId = 0;
 let debugPreviewAbortController = null;
@@ -124,22 +125,12 @@ function showModal({ title, message, input = false, value = '', confirmText = 'C
 }
 
 async function fetchAPI(endpoint, options = {}) {
-    try {
-        const response = await fetch(`${API_BASE}${endpoint}`, options);
-        if (!response.ok) throw new Error();
-        return await response.json();
-    } catch (err) {
-        if (endpoint === '/list') return MOCK_DATA;
-        if (endpoint.startsWith('/files')) {
-            const dir = state.directories.find(d => d.name === state.currentPath);
-            return [
-                { name: "01_intro.mp3", type: "audio/mpeg" },
-                { name: "02_story.mp3", type: "audio/mpeg" },
-                { name: dir?.cover || "cover.jpg", type: "image/jpeg" }
-            ];
-        }
-        return { success: true };
+    const response = await fetch(`${API_BASE}${endpoint}`, options);
+    if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || `Request failed (${response.status})`);
     }
+    return await response.json();
 }
 
 function formatBytes(bytes) {
@@ -506,23 +497,39 @@ async function navigate() {
 async function loadDashboard(push = true) {
     if (push) window.location.hash = '/';
     leaveDebugView();
-    state.loading = true; render();
-    state.directories = await fetchAPI('/list');
-    state.view = 'dashboard';
-    state.loading = false; render();
+    state.loading = true;
+    state.error = null;
+    render();
+    try {
+        state.directories = await fetchAPI('/list');
+        state.view = 'dashboard';
+    } catch (err) {
+        state.error = err.message || 'Failed to connect to Zauberbox';
+    } finally {
+        state.loading = false;
+        render();
+    }
 }
 
 async function enterDirectory(path, push = true) {
     if (push) window.location.hash = `/dir/${encodeURIComponent(path)}`;
     leaveDebugView();
     state.loading = true;
-    state.currentPath = path; render();
-    state.files = await fetchAPI(`/files?path=${encodeURIComponent(path)}`);
-    if (state.directories.length === 0) {
-        state.directories = await fetchAPI('/list');
+    state.error = null;
+    state.currentPath = path;
+    render();
+    try {
+        state.files = await fetchAPI(`/files?path=${encodeURIComponent(path)}`);
+        if (state.directories.length === 0) {
+            state.directories = await fetchAPI('/list');
+        }
+        state.view = 'directory';
+    } catch (err) {
+        state.error = err.message || 'Failed to load directory';
+    } finally {
+        state.loading = false;
+        render();
     }
-    state.view = 'directory';
-    state.loading = false; render();
 }
 
 async function handleMkdir() {
@@ -1004,6 +1011,17 @@ function render() {
 
     if (state.loading) {
         app.innerHTML = '<div aria-busy="true" id="loading">Working...</div>';
+        return;
+    }
+
+    if (state.error) {
+        app.innerHTML = `
+            <div style="text-align: center; margin-top: 4rem;">
+                <h2 style="color: var(--pico-error-background);">Connection Error</h2>
+                <p>${escapeHtml(state.error)}</p>
+                <button class="primary" style="margin-top: 1rem;" onclick="navigate()">Retry</button>
+            </div>
+        `;
         return;
     }
 
