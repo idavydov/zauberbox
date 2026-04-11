@@ -28,10 +28,11 @@ class QrService {
     void pollDecodedQrs();
     bool startScanning();
     void stopScanning();
-    void stopDebugPreviewSession(bool resumeScanning);
+    void stopDebugPreviewSession();
     bool initCamera(bool startDecoderTask);
     void deinitCamera();
     void handleStateTransition(AppState state);
+    void observeState(AppState state);
     void startScanSession();
     void stopScanSession();
     void recordDecodedActivity();
@@ -50,5 +51,5 @@ class QrService {
     bool scanning_ = false;
     bool available_ = false;
     bool debugPreviewActive_ = false;
-    bool debugPreviewResumeScanOnExit_ = false;
+    AppState debugPreviewReturnState_ = AppState::Idle;
 };

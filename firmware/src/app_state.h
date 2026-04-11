@@ -6,6 +6,7 @@ enum class AppState : uint8_t {
     Boot,
     QrScan,
     Idle,
+    DebugCameraPreview,
     Playing,
     Paused,
     Sleep,

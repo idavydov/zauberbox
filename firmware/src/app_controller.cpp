@@ -247,6 +247,7 @@ bool AppController::shouldMuteOutputInCurrentState() const {
     }
 
     return state == AppState::Idle ||
+           state == AppState::DebugCameraPreview ||
            state == AppState::Paused;
 }
 

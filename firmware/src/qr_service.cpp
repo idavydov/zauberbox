@@ -104,14 +104,25 @@ void QrService::update() {
         return;
     }
 
-    const AppState state = appStateStore().current();
-    if (debugPreviewActive_ && state != AppState::Idle) {
-        stopDebugPreviewSession(false);
+    AppState state = appStateStore().current();
+    if (debugPreviewActive_ && state != AppState::DebugCameraPreview) {
+        Serial.printf("QR service: preview session active while app state is %s; stopping preview session.\n",
+                      AppStateStore::stateName(state));
+        stopDebugPreviewSession();
+        state = appStateStore().current();
     }
-    if (state != lastObservedState_) {
-        handleStateTransition(state);
-        lastObservedState_ = state;
+    if (!debugPreviewActive_ && state == AppState::DebugCameraPreview) {
+        const AppState fallbackState = debugPreviewReturnState_ == AppState::DebugCameraPreview
+                                           ? AppState::Idle
+                                           : debugPreviewReturnState_;
+        Serial.printf("QR service: app state stuck in %s without active preview session; restoring %s.\n",
+                      AppStateStore::stateName(state),
+                      AppStateStore::stateName(fallbackState));
+        debugPreviewReturnState_ = AppState::Idle;
+        (void)appStateStore().transitionTo(fallbackState);
+        state = appStateStore().current();
     }
+    observeState(state);
 
     if (state == AppState::QrScan) {
         if (!scanning_ && millis() >= nextStartAttemptAtMs_) {
@@ -174,6 +185,12 @@ bool QrService::isScanning() const {
 }
 
 bool QrService::beginDebugPreview(String *errorMessage) {
+    Serial.printf("QR service: beginDebugPreview requested in state=%s wifi=%s scanning=%d camera=%d preview=%d.\n",
+                  AppStateStore::stateName(appStateStore().current()),
+                  AppStateStore::wifiModeName(appStateStore().wifiMode()),
+                  scanning_,
+                  cameraInitialized_,
+                  debugPreviewActive_);
     if (!available_) {
         if (errorMessage) {
             *errorMessage = "Camera service unavailable";
@@ -188,30 +205,44 @@ bool QrService::beginDebugPreview(String *errorMessage) {
     }
 
     const AppState state = appStateStore().current();
+    if (state == AppState::DebugCameraPreview) {
+        Serial.printf("QR service: beginDebugPreview ignored because app state is already %s and preview=%d.\n",
+                      AppStateStore::stateName(state),
+                      debugPreviewActive_);
+        return debugPreviewActive_;
+    }
     if (state != AppState::QrScan && state != AppState::Idle) {
+        Serial.printf("QR service: beginDebugPreview rejected in state=%s.\n",
+                      AppStateStore::stateName(state));
         if (errorMessage) {
             *errorMessage = "Preview unavailable in the current device state";
         }
         return false;
     }
 
-    if (debugPreviewActive_) {
-        return true;
+    debugPreviewReturnState_ = state;
+    Serial.printf("QR service: debug preview return state set to %s.\n",
+                  AppStateStore::stateName(debugPreviewReturnState_));
+
+    if (!appStateStore().transitionTo(AppState::DebugCameraPreview)) {
+        Serial.println("QR service: failed to transition into DebugCameraPreview.");
+        if (errorMessage) {
+            *errorMessage = "Failed to enter preview mode";
+        }
+        return false;
     }
 
-    const bool suspendedScan = state == AppState::QrScan;
-    debugPreviewResumeScanOnExit_ = suspendedScan;
-    if (suspendedScan) {
-        (void)appStateStore().transitionTo(AppState::Idle);
+    if (state == AppState::QrScan) {
+        Serial.println("QR service: stopping QR scanning before enabling debug preview.");
         stopScanning();
-        stopScanSession();
     }
+    observeState(AppState::DebugCameraPreview);
 
     if (!initCamera(false)) {
-        debugPreviewResumeScanOnExit_ = false;
-        if (suspendedScan) {
-            (void)appStateStore().transitionTo(AppState::QrScan);
-        }
+        Serial.println("QR service: debug preview camera init failed; restoring previous state.");
+        stopDebugPreviewSession();
+        (void)appStateStore().transitionTo(debugPreviewReturnState_);
+        observeState(appStateStore().current());
         if (errorMessage) {
             *errorMessage = "Failed to initialize camera";
         }
@@ -224,7 +255,26 @@ bool QrService::beginDebugPreview(String *errorMessage) {
 }
 
 void QrService::endDebugPreview() {
-    stopDebugPreviewSession(debugPreviewResumeScanOnExit_);
+    Serial.printf("QR service: endDebugPreview requested in state=%s return=%s scanning=%d camera=%d preview=%d.\n",
+                  AppStateStore::stateName(appStateStore().current()),
+                  AppStateStore::stateName(debugPreviewReturnState_),
+                  scanning_,
+                  cameraInitialized_,
+                  debugPreviewActive_);
+    if (!debugPreviewActive_ && appStateStore().current() != AppState::DebugCameraPreview) {
+        Serial.println("QR service: endDebugPreview ignored because no preview session is active.");
+        return;
+    }
+
+    stopDebugPreviewSession();
+    const AppState returnState = debugPreviewReturnState_;
+    debugPreviewReturnState_ = AppState::Idle;
+    if (appStateStore().current() == AppState::DebugCameraPreview) {
+        Serial.printf("QR service: leaving DebugCameraPreview and restoring %s.\n",
+                      AppStateStore::stateName(returnState));
+        (void)appStateStore().transitionTo(returnState);
+        observeState(appStateStore().current());
+    }
 }
 
 void QrService::pollDecodedQrs() {
@@ -246,6 +296,11 @@ void QrService::pollDecodedQrs() {
 }
 
 void QrService::handleStateTransition(AppState state) {
+    Serial.printf("QR service: handleStateTransition(%s) with scanning=%d camera=%d preview=%d.\n",
+                  AppStateStore::stateName(state),
+                  scanning_,
+                  cameraInitialized_,
+                  debugPreviewActive_);
     if (state == AppState::QrScan) {
         startScanSession();
         return;
@@ -254,13 +309,27 @@ void QrService::handleStateTransition(AppState state) {
     stopScanSession();
 }
 
+void QrService::observeState(AppState state) {
+    if (state == lastObservedState_) {
+        return;
+    }
+
+    Serial.printf("QR service: observed app state change %s -> %s.\n",
+                  AppStateStore::stateName(lastObservedState_),
+                  AppStateStore::stateName(state));
+    handleStateTransition(state);
+    lastObservedState_ = state;
+}
+
 void QrService::startScanSession() {
+    Serial.println("QR service: scan session started.");
     lastQrActivityAtMs_ = millis();
     lastDecodedPayload_ = "";
     lastDecodedPayloadAtMs_ = 0;
 }
 
 void QrService::stopScanSession() {
+    Serial.println("QR service: scan session stopped.");
     lastQrActivityAtMs_ = 0;
     lastDecodedPayload_ = "";
     lastDecodedPayloadAtMs_ = 0;
@@ -317,6 +386,11 @@ bool QrService::startScanning() {
         return true;
     }
 
+    Serial.printf("QR service: startScanning requested in state=%s camera=%d preview=%d nextRetryAt=%lu.\n",
+                  AppStateStore::stateName(appStateStore().current()),
+                  cameraInitialized_,
+                  debugPreviewActive_,
+                  static_cast<unsigned long>(nextStartAttemptAtMs_));
     if (!initCamera(true)) {
         nextStartAttemptAtMs_ = millis() + kCameraRetryDelayMs;
         Serial.println("QR service: camera init failed, scan mode unavailable.");
@@ -334,26 +408,28 @@ void QrService::stopScanning() {
         return;
     }
 
+    Serial.printf("QR service: stopScanning in state=%s camera=%d preview=%d.\n",
+                  AppStateStore::stateName(appStateStore().current()),
+                  cameraInitialized_,
+                  debugPreviewActive_);
     scanning_ = false;
     deinitCamera();
     Serial.println("QR service: scanner inactive.");
 }
 
-void QrService::stopDebugPreviewSession(bool resumeScanning) {
-    if (!debugPreviewActive_ && !debugPreviewResumeScanOnExit_) {
+void QrService::stopDebugPreviewSession() {
+    if (!debugPreviewActive_) {
         return;
     }
 
+    Serial.printf("QR service: stopDebugPreviewSession in state=%s scanning=%d camera=%d.\n",
+                  AppStateStore::stateName(appStateStore().current()),
+                  scanning_,
+                  cameraInitialized_);
     debugPreviewActive_ = false;
-    const bool shouldResumeScan = resumeScanning && debugPreviewResumeScanOnExit_;
-    debugPreviewResumeScanOnExit_ = false;
 
     if (!scanning_ && cameraInitialized_) {
         deinitCamera();
-    }
-
-    if (shouldResumeScan && appStateStore().current() == AppState::Idle) {
-        (void)appStateStore().transitionTo(AppState::QrScan);
     }
 
     Serial.println("QR service: debug preview inactive.");
@@ -378,7 +454,7 @@ bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMe
         }
         return false;
     }
-    if (!debugPreviewActive_) {
+    if (!debugPreviewActive_ || appStateStore().current() != AppState::DebugCameraPreview) {
         if (errorMessage) {
             *errorMessage = "Preview session is not active";
         }
@@ -437,8 +513,14 @@ bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMe
 }
 
 bool QrService::initCamera(bool startDecoderTask) {
+    Serial.printf("QR service: initCamera(startDecoderTask=%d) scanning=%d camera=%d preview=%d.\n",
+                  startDecoderTask,
+                  scanning_,
+                  cameraInitialized_,
+                  debugPreviewActive_);
     if (cameraInitialized_) {
         if (startDecoderTask && reader_ && !reader_->begun) {
+            Serial.println("QR service: camera already initialized; starting decoder task on existing reader.");
             reader_->beginOnCore(kQrDecodeCore);
         }
         return true;
@@ -476,11 +558,15 @@ bool QrService::initCamera(bool startDecoderTask) {
         reader_->beginOnCore(kQrDecodeCore);
     }
     cameraInitialized_ = true;
-    Serial.println("QR service: OV5640 camera initialized.");
+    Serial.printf("QR service: OV5640 camera initialized (decoder=%d).\n", startDecoderTask);
     return true;
 }
 
 void QrService::deinitCamera() {
+    Serial.printf("QR service: deinitCamera scanning=%d camera=%d preview=%d.\n",
+                  scanning_,
+                  cameraInitialized_,
+                  debugPreviewActive_);
     if (reader_) {
         reader_->end();
         delete reader_;
@@ -497,6 +583,7 @@ void QrService::deinitCamera() {
     }
 
     disableCameraHardware();
+    Serial.println("QR service: camera deinitialized.");
 }
 
 void QrService::configureCameraRouting() const {

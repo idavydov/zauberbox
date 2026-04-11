@@ -14,14 +14,21 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
                    toState == AppState::Resetting;
         case AppState::QrScan:
             return toState == AppState::Idle ||
+                   toState == AppState::DebugCameraPreview ||
                    toState == AppState::Playing ||
                    toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Idle:
             return toState == AppState::QrScan ||
+                   toState == AppState::DebugCameraPreview ||
                    toState == AppState::Playing ||
                    toState == AppState::Sleep ||
+                   toState == AppState::WifiPortal ||
+                   toState == AppState::Resetting;
+        case AppState::DebugCameraPreview:
+            return toState == AppState::QrScan ||
+                   toState == AppState::Idle ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Playing:
@@ -42,6 +49,7 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
         case AppState::WifiPortal:
             return toState == AppState::QrScan ||
                    toState == AppState::Idle ||
+                   toState == AppState::DebugCameraPreview ||
                    toState == AppState::Playing ||
                    toState == AppState::Paused ||
                    toState == AppState::Resetting;
@@ -85,11 +93,13 @@ WifiMode AppStateStore::wifiMode() const {
 
 bool AppStateStore::transitionTo(AppState nextState) {
     AppState previousState = AppState::Boot;
+    WifiMode currentWifiMode = WifiMode::Disabled;
     bool changed = false;
     bool invalid = false;
 
     portENTER_CRITICAL(&stateMux_);
     previousState = snapshot_.appState;
+    currentWifiMode = snapshot_.wifiMode;
     if (previousState == nextState) {
         portEXIT_CRITICAL(&stateMux_);
         return false;
@@ -109,9 +119,10 @@ bool AppStateStore::transitionTo(AppState nextState) {
         return false;
     }
     if (changed) {
-        Serial.printf("App state: %s -> %s\n",
+        Serial.printf("App state: %s -> %s (wifi=%s)\n",
                       stateName(previousState),
-                      stateName(nextState));
+                      stateName(nextState),
+                      wifiModeName(currentWifiMode));
     }
     return changed;
 }
@@ -148,9 +159,13 @@ void AppStateStore::syncWifiMode(WifiMode mode) {
         if (snapshot_.appState != AppState::Resetting) {
             wifiPortalReturnState_ = snapshot_.appState;
         }
+        Serial.printf("Wi-Fi sync: portal active, storing return state %s.\n",
+                      stateName(wifiPortalReturnState_));
         nextState = AppState::WifiPortal;
     } else if (previousMode == WifiMode::PortalActive && mode != WifiMode::PortalActive &&
                snapshot_.appState == AppState::WifiPortal) {
+        Serial.printf("Wi-Fi sync: leaving portal, restoring app state %s.\n",
+                      stateName(wifiPortalReturnState_));
         nextState = wifiPortalReturnState_;
     }
     requestedState = nextState;
@@ -177,9 +192,10 @@ void AppStateStore::syncWifiMode(WifiMode mode) {
         return;
     }
     if (stateChanged) {
-        Serial.printf("App state: %s -> %s\n",
+        Serial.printf("App state: %s -> %s (via Wi-Fi sync, mode=%s)\n",
                       stateName(previousState),
-                      stateName(nextState));
+                      stateName(nextState),
+                      wifiModeName(mode));
     }
 }
 
@@ -195,6 +211,8 @@ const char *AppStateStore::stateName(AppState state) {
             return "QrScan";
         case AppState::Idle:
             return "Idle";
+        case AppState::DebugCameraPreview:
+            return "DebugCameraPreview";
         case AppState::Playing:
             return "Playing";
         case AppState::Paused:

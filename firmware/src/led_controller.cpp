@@ -85,6 +85,15 @@ void LedController::runTask() {
                 vTaskDelay(pdMS_TO_TICKS(25));
                 break;
             }
+            case AppState::DebugCameraPreview: {
+                const float breath = (exp(sin(millis() / 1000.0 * PI)) - 0.36787944F) * 20.0F;
+                for (int i = 0; i < kLedCount; i++) {
+                    ring_.setPixelColor(i, ring_.Color(0, breath * 0.25F, breath * 0.5F));
+                }
+                ring_.show();
+                vTaskDelay(pdMS_TO_TICKS(25));
+                break;
+            }
             case AppState::Playing: {
                 for (int i = 0; i < kLedCount; i++) {
                     ring_.setPixelColor(i, ring_.gamma32(ring_.ColorHSV(hue + (i * 65536 / kLedCount))));

@@ -888,8 +888,13 @@ void WebServerService::handleDebugCameraPreviewStart() {
         return;
     }
 
+    Serial.printf("Web server: /api/debug/camera-preview/start in appState=%s wifi=%s.\n",
+                  AppStateStore::stateName(appStateStore().current()),
+                  AppStateStore::wifiModeName(appStateStore().wifiMode()));
     String errorMessage;
     if (!qrService_->beginDebugPreview(&errorMessage)) {
+        Serial.printf("Web server: debug camera preview start failed: %s\n",
+                      errorMessage.isEmpty() ? "unknown error" : errorMessage.c_str());
         sendJsonError(409,
                       errorMessage.isEmpty() ? "Failed to start camera preview"
                                              : errorMessage.c_str());
@@ -908,6 +913,9 @@ void WebServerService::handleDebugCameraPreviewStop() {
         return;
     }
 
+    Serial.printf("Web server: /api/debug/camera-preview/stop in appState=%s wifi=%s.\n",
+                  AppStateStore::stateName(appStateStore().current()),
+                  AppStateStore::wifiModeName(appStateStore().wifiMode()));
     qrService_->endDebugPreview();
     server_.send(200, "application/json", "{\"success\":true}");
 }
