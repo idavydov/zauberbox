@@ -305,7 +305,7 @@ void audioServiceTask(void *pvParameters) {
             gPlaybackPaused = false;
         }
 
-        if (!isRunning && !pendingRequests.empty()) {
+        if (!isRunning && !gPlaybackPaused && !pendingRequests.empty()) {
             const AudioPlaybackRequest nextRequest = pendingRequests.front();
             pendingRequests.pop_front();
             gPlaybackPaused = false;
