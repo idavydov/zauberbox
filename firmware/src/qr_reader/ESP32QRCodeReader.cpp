@@ -1,5 +1,6 @@
 #include "ESP32QRCodeReader.h"
 
+#include "freertos/idf_additions.h"
 #include "quirc/quirc.h"
 #include "Arduino.h"
 #include "../debug_log.h"
@@ -273,22 +274,67 @@ void qrCodeDetectTask(void *taskData)
   quirc_destroy(q);
   self->qrCodeTaskHandler = NULL;
   self->taskRunning = false;
-  vTaskDelete(NULL);
+  if (self->begunWithCaps)
+  {
+    vTaskDeleteWithCaps(NULL);
+  }
+  else
+  {
+    vTaskDelete(NULL);
+  }
 }
 
 void ESP32QRCodeReader::begin()
 {
-  beginOnCore(0);
+  (void)beginOnCore(0);
 }
 
-void ESP32QRCodeReader::beginOnCore(BaseType_t core)
+bool ESP32QRCodeReader::beginOnCore(BaseType_t core)
 {
   if (!begun)
   {
     stopRequested = false;
-    xTaskCreatePinnedToCore(qrCodeDetectTask, "qrCodeDetectTask", QR_CODE_READER_STACK_SIZE, this, QR_CODE_READER_TASK_PRIORITY, &qrCodeTaskHandler, core);
+    qrCodeTaskHandler = NULL;
+    begunWithCaps = false;
+
+    BaseType_t result = xTaskCreatePinnedToCoreWithCaps(qrCodeDetectTask,
+                                                        "qrCodeDetectTask",
+                                                        QR_CODE_READER_STACK_SIZE,
+                                                        this,
+                                                        QR_CODE_READER_TASK_PRIORITY,
+                                                        &qrCodeTaskHandler,
+                                                        core,
+                                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (result == pdPASS)
+    {
+      begunWithCaps = true;
+      begun = true;
+      return true;
+    }
+
+    Serial.printf("ESP32QRCodeReader: PSRAM QR task creation failed (%ld), retrying with internal RAM stack.\n",
+                  static_cast<long>(result));
+    result = xTaskCreatePinnedToCore(qrCodeDetectTask,
+                                     "qrCodeDetectTask",
+                                     QR_CODE_READER_STACK_SIZE,
+                                     this,
+                                     QR_CODE_READER_TASK_PRIORITY,
+                                     &qrCodeTaskHandler,
+                                     core);
+    if (result != pdPASS)
+    {
+      Serial.printf("ESP32QRCodeReader: QR task creation failed (%ld).\n",
+                    static_cast<long>(result));
+      qrCodeTaskHandler = NULL;
+      begun = false;
+      return false;
+    }
+
     begun = true;
+    return true;
   }
+
+  return true;
 }
 
 bool ESP32QRCodeReader::receiveQrCode(struct QRCodeData *qrCodeData, long timeoutMs)
@@ -310,12 +356,20 @@ void ESP32QRCodeReader::end()
     if (taskRunning && qrCodeTaskHandler != NULL)
     {
       Serial.println("ESP32QRCodeReader: forcing QR task shutdown after timeout.");
-      vTaskDelete(qrCodeTaskHandler);
+      if (begunWithCaps)
+      {
+        vTaskDeleteWithCaps(qrCodeTaskHandler);
+      }
+      else
+      {
+        vTaskDelete(qrCodeTaskHandler);
+      }
       qrCodeTaskHandler = NULL;
       taskRunning = false;
     }
   }
   begun = false;
+  begunWithCaps = false;
   stopRequested = false;
 }
 

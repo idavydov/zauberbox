@@ -522,7 +522,11 @@ bool QrService::initCamera(bool startDecoderTask) {
     if (cameraInitialized_) {
         if (startDecoderTask && reader_ && !reader_->begun) {
             Serial.println("QR service: camera already initialized; starting decoder task on existing reader.");
-            reader_->beginOnCore(kQrDecodeCore);
+            if (!reader_->beginOnCore(kQrDecodeCore)) {
+                Serial.println("QR service: failed to start QR decoder task on existing camera session.");
+                deinitCamera();
+                return false;
+            }
         }
         return true;
     }
@@ -555,10 +559,14 @@ bool QrService::initCamera(bool startDecoderTask) {
         sensor->set_hmirror(sensor, 1);
     }
 
-    if (startDecoderTask) {
-        reader_->beginOnCore(kQrDecodeCore);
-    }
     cameraInitialized_ = true;
+    if (startDecoderTask) {
+        if (!reader_->beginOnCore(kQrDecodeCore)) {
+            Serial.println("QR service: QR decoder task startup failed.");
+            deinitCamera();
+            return false;
+        }
+    }
     Serial.printf("QR service: OV5640 camera initialized (decoder=%d).\n", startDecoderTask);
     return true;
 }

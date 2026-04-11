@@ -44,6 +44,7 @@ public:
   camera_config_t cameraConfig;
   QueueHandle_t qrCodeQueue;
   bool begun = false;
+  bool begunWithCaps = false;
   bool debug = false;
 
   // Constructor
@@ -57,7 +58,7 @@ public:
   QRCodeReaderSetupErr setup();
 
   void begin();
-  void beginOnCore(BaseType_t core);
+  bool beginOnCore(BaseType_t core);
   bool receiveQrCode(struct QRCodeData *qrCodeData, long timeoutMs);
   void end();
 
