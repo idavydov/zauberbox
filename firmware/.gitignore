@@ -8,6 +8,7 @@
 
 # generated
 data/index.html
+data/wifi.json
 
 # ESP-IDF
 sdkconfig
