@@ -65,7 +65,6 @@ refactor detail.
 - Decide whether any non-playback button behavior still belongs in `Idle`.
 - Check if QR code scanning mode works after Idle mode.
 - More web-app settings (change password).
-- Web-app: fail with an error when there's no server
 - Make all the copyright messages a modal dialog
 
 ### 2. Reduce Regression Risk
