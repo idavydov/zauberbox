@@ -251,6 +251,84 @@ body {
     color: var(--pico-muted-color);
 }
 
+/* Debug View */
+.debug-grid {
+    margin-top: 1rem;
+}
+.debug-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+.debug-menu-card {
+    margin: 0;
+    padding: 1.1rem 1.2rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: var(--pico-border-radius);
+    background: var(--pico-card-background-color);
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.debug-menu-card:hover {
+    border-color: var(--pico-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+}
+.debug-menu-card.disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+.debug-menu-card.disabled:hover {
+    border-color: var(--pico-muted-border-color);
+    transform: none;
+    box-shadow: none;
+}
+.debug-menu-card p {
+    margin: 0.45rem 0 0;
+    color: var(--pico-muted-color);
+}
+.debug-card {
+    margin: 0;
+}
+.debug-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.debug-card-header p {
+    margin: 0.35rem 0 0;
+    color: var(--pico-muted-color);
+}
+.debug-frame-shell {
+    overflow: hidden;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: calc(var(--pico-border-radius) - 2px);
+    background: var(--pico-secondary-focus);
+}
+.debug-frame-image,
+.debug-frame-placeholder {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+}
+.debug-frame-image {
+    object-fit: cover;
+    background: #111827;
+}
+.debug-frame-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--pico-muted-color);
+}
+.debug-status {
+    margin: 0.75rem 0 0.35rem;
+}
+.debug-status.error {
+    color: var(--pico-error-background);
+}
+
 /* Drag & Drop Overlay */
 .upload-item.drag-over::after {
     content: 'Drop to upload';

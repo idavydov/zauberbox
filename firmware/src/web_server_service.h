@@ -6,9 +6,10 @@
 
 #include "media_service.h"
 
+class QrService;
 class WebServerService {
   public:
-    void begin(MediaService *mediaService);
+    void begin(MediaService *mediaService, QrService *qrService);
     void update();
 
   private:
@@ -41,9 +42,13 @@ class WebServerService {
     void handleRenameFile();
     void handleUploadStart();
     void handleUploadData();
+    void handleDebugCameraPreviewStart();
+    void handleDebugCameraPreviewStop();
+    void handleDebugCameraFrame();
 
     WebServer server_{80};
     MediaService *mediaService_ = nullptr;
+    QrService *qrService_ = nullptr;
     bool routesRegistered_ = false;
     bool running_ = false;
     File uploadFile_;

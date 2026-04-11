@@ -1,8 +1,10 @@
 #include "qr_service.h"
 
 #include <esp_camera.h>
+#include <img_converters.h>
 
 #include "app_state.h"
+#include "audio_driver.h"
 #include "io_expander.h"
 #include "qr_reader/ESP32QRCodeReader.h"
 
@@ -103,6 +105,9 @@ void QrService::update() {
     }
 
     const AppState state = appStateStore().current();
+    if (debugPreviewActive_ && state != AppState::Idle) {
+        stopDebugPreviewSession(false);
+    }
     if (state != lastObservedState_) {
         handleStateTransition(state);
         lastObservedState_ = state;
@@ -166,6 +171,60 @@ bool QrService::isCameraReady() const {
 
 bool QrService::isScanning() const {
     return scanning_;
+}
+
+bool QrService::beginDebugPreview(String *errorMessage) {
+    if (!available_) {
+        if (errorMessage) {
+            *errorMessage = "Camera service unavailable";
+        }
+        return false;
+    }
+    if (audioIsRunning()) {
+        if (errorMessage) {
+            *errorMessage = "Preview unavailable while audio is active";
+        }
+        return false;
+    }
+
+    const AppState state = appStateStore().current();
+    if (state != AppState::QrScan && state != AppState::Idle) {
+        if (errorMessage) {
+            *errorMessage = "Preview unavailable in the current device state";
+        }
+        return false;
+    }
+
+    if (debugPreviewActive_) {
+        return true;
+    }
+
+    const bool suspendedScan = state == AppState::QrScan;
+    debugPreviewResumeScanOnExit_ = suspendedScan;
+    if (suspendedScan) {
+        (void)appStateStore().transitionTo(AppState::Idle);
+        stopScanning();
+        stopScanSession();
+    }
+
+    if (!initCamera(false)) {
+        debugPreviewResumeScanOnExit_ = false;
+        if (suspendedScan) {
+            (void)appStateStore().transitionTo(AppState::QrScan);
+        }
+        if (errorMessage) {
+            *errorMessage = "Failed to initialize camera";
+        }
+        return false;
+    }
+
+    debugPreviewActive_ = true;
+    Serial.println("QR service: debug preview active.");
+    return true;
+}
+
+void QrService::endDebugPreview() {
+    stopDebugPreviewSession(debugPreviewResumeScanOnExit_);
 }
 
 void QrService::pollDecodedQrs() {
@@ -258,7 +317,7 @@ bool QrService::startScanning() {
         return true;
     }
 
-    if (!initCamera()) {
+    if (!initCamera(true)) {
         nextStartAttemptAtMs_ = millis() + kCameraRetryDelayMs;
         Serial.println("QR service: camera init failed, scan mode unavailable.");
         return false;
@@ -280,8 +339,108 @@ void QrService::stopScanning() {
     Serial.println("QR service: scanner inactive.");
 }
 
-bool QrService::initCamera() {
+void QrService::stopDebugPreviewSession(bool resumeScanning) {
+    if (!debugPreviewActive_ && !debugPreviewResumeScanOnExit_) {
+        return;
+    }
+
+    debugPreviewActive_ = false;
+    const bool shouldResumeScan = resumeScanning && debugPreviewResumeScanOnExit_;
+    debugPreviewResumeScanOnExit_ = false;
+
+    if (!scanning_ && cameraInitialized_) {
+        deinitCamera();
+    }
+
+    if (shouldResumeScan && appStateStore().current() == AppState::Idle) {
+        (void)appStateStore().transitionTo(AppState::QrScan);
+    }
+
+    Serial.println("QR service: debug preview inactive.");
+}
+
+bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMessage) {
+    if (!jpegData) {
+        if (errorMessage) {
+            *errorMessage = "Debug preview buffer missing";
+        }
+        return false;
+    }
+    if (!available_) {
+        if (errorMessage) {
+            *errorMessage = "Camera service unavailable";
+        }
+        return false;
+    }
+    if (audioIsRunning()) {
+        if (errorMessage) {
+            *errorMessage = "Preview unavailable while audio is active";
+        }
+        return false;
+    }
+    if (!debugPreviewActive_) {
+        if (errorMessage) {
+            *errorMessage = "Preview session is not active";
+        }
+        return false;
+    }
+
+    const bool startedTemporaryCamera = !cameraInitialized_;
+    if (!initCamera(false)) {
+        if (errorMessage) {
+            *errorMessage = "Failed to initialize camera";
+        }
+        return false;
+    }
+
+    camera_fb_t *frameBuffer = esp_camera_fb_get();
+    if (!frameBuffer) {
+        if (startedTemporaryCamera) {
+            deinitCamera();
+        }
+        if (errorMessage) {
+            *errorMessage = "Camera capture failed";
+        }
+        return false;
+    }
+
+    bool ok = false;
+    uint8_t *jpegBuffer = nullptr;
+    size_t jpegSize = 0;
+    bool convertedBuffer = false;
+
+    if (frameBuffer->format == PIXFORMAT_JPEG) {
+        jpegBuffer = frameBuffer->buf;
+        jpegSize = frameBuffer->len;
+        ok = true;
+    } else {
+        convertedBuffer = frame2jpg(frameBuffer, 80, &jpegBuffer, &jpegSize);
+        ok = convertedBuffer && jpegBuffer && jpegSize > 0;
+    }
+
+    if (ok) {
+        jpegData->assign(jpegBuffer, jpegBuffer + jpegSize);
+    } else if (errorMessage) {
+        *errorMessage = "Failed to encode preview frame";
+    }
+
+    if (convertedBuffer && jpegBuffer) {
+        free(jpegBuffer);
+    }
+    esp_camera_fb_return(frameBuffer);
+
+    if (startedTemporaryCamera) {
+        deinitCamera();
+    }
+
+    return ok;
+}
+
+bool QrService::initCamera(bool startDecoderTask) {
     if (cameraInitialized_) {
+        if (startDecoderTask && reader_ && !reader_->begun) {
+            reader_->beginOnCore(kQrDecodeCore);
+        }
         return true;
     }
 
@@ -313,7 +472,9 @@ bool QrService::initCamera() {
         sensor->set_hmirror(sensor, 1);
     }
 
-    reader_->beginOnCore(kQrDecodeCore);
+    if (startDecoderTask) {
+        reader_->beginOnCore(kQrDecodeCore);
+    }
     cameraInitialized_ = true;
     Serial.println("QR service: OV5640 camera initialized.");
     return true;

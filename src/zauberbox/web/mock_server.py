@@ -1,4 +1,4 @@
-from flask import Flask, request, send_from_directory, jsonify
+from flask import Flask, request, send_from_directory, send_file, jsonify
 import os
 import shutil
 import argparse
@@ -71,6 +71,21 @@ def get_file():
     path = request.args.get('path', '')
     name = request.args.get('name', '')
     return send_from_directory(os.path.join(STORAGE_DIR, path), name)
+
+@app.route('/api/debug/camera-frame')
+def debug_camera_frame():
+    image_path = os.path.join(PROJECT_ROOT, "img", "photo1.jpg")
+    if not os.path.exists(image_path):
+        return jsonify({"success": False, "error": "Mock preview image missing"}), 503
+    return send_file(image_path, mimetype='image/jpeg', max_age=0)
+
+@app.route('/api/debug/camera-preview/start', methods=['POST'])
+def debug_camera_preview_start():
+    return jsonify({"success": True})
+
+@app.route('/api/debug/camera-preview/stop', methods=['POST'])
+def debug_camera_preview_stop():
+    return jsonify({"success": True})
 
 @app.route('/api/mkdir', methods=['POST'])
 def mkdir():

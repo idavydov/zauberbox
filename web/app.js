@@ -20,9 +20,17 @@ let state = {
     files: [],
     loading: true,
     upload: null,
+    debugPreviewUrl: null,
+    debugPreviewLoading: false,
+    debugPreviewError: '',
+    debugPreviewUpdatedAt: 0,
+    debugPreviewSessionActive: false,
     selectionMode: false,
     selectedDirs: new Set()
 };
+let debugPreviewTimerId = 0;
+let debugPreviewAbortController = null;
+let debugReturnHash = '#/';
 
 const MOCK_DATA = [
     { name: "001", cover: null, first_mp3: "01_intro.mp3" },
@@ -184,9 +192,205 @@ function uploadFile(endpoint, formData, onProgress) {
     });
 }
 
+function revokeDebugPreviewUrl() {
+    if (!state.debugPreviewUrl) {
+        return;
+    }
+    URL.revokeObjectURL(state.debugPreviewUrl);
+    state.debugPreviewUrl = null;
+}
+
+async function callDebugPreviewEndpoint(action) {
+    const response = await fetch(`${API_BASE}/debug/camera-preview/${action}`, {
+        method: 'POST'
+    });
+    if (response.ok) {
+        return;
+    }
+
+    let message = `Failed to ${action} camera preview`;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+        const data = await response.json();
+        message = data.error || message;
+    } else {
+        const text = await response.text();
+        if (text) {
+            message = text;
+        }
+    }
+    throw new Error(message);
+}
+
+function stopDebugPreview({ clearImage = false, stopSession = false } = {}) {
+    if (debugPreviewTimerId) {
+        window.clearTimeout(debugPreviewTimerId);
+        debugPreviewTimerId = 0;
+    }
+    if (debugPreviewAbortController) {
+        debugPreviewAbortController.abort();
+        debugPreviewAbortController = null;
+    }
+    if (clearImage) {
+        revokeDebugPreviewUrl();
+    }
+    if (stopSession && state.debugPreviewSessionActive) {
+        state.debugPreviewSessionActive = false;
+        fetch(`${API_BASE}/debug/camera-preview/stop`, { method: 'POST' }).catch(() => {});
+    }
+}
+
+function scheduleDebugPreviewRefresh(delayMs = 1200) {
+    if (state.view !== 'debug-camera') {
+        return;
+    }
+    if (debugPreviewTimerId) {
+        window.clearTimeout(debugPreviewTimerId);
+    }
+    debugPreviewTimerId = window.setTimeout(() => {
+        debugPreviewTimerId = 0;
+        refreshDebugPreview();
+    }, delayMs);
+}
+
+function leaveDebugView() {
+    stopDebugPreview({ clearImage: true, stopSession: true });
+    state.debugPreviewLoading = false;
+    state.debugPreviewError = '';
+    state.debugPreviewUpdatedAt = 0;
+    state.debugPreviewSessionActive = false;
+}
+
+function formatDebugTimestamp(timestamp) {
+    if (!timestamp) {
+        return '';
+    }
+    return new Date(timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+async function refreshDebugPreview() {
+    if (state.view !== 'debug-camera' || debugPreviewAbortController) {
+        return;
+    }
+
+    state.debugPreviewLoading = true;
+    render();
+
+    const controller = new AbortController();
+    debugPreviewAbortController = controller;
+    try {
+        const response = await fetch(`${API_BASE}/debug/camera-frame?ts=${Date.now()}`, {
+            cache: 'no-store',
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            let message = `Failed to load camera preview (${response.status})`;
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                message = data.error || message;
+            } else {
+                const text = await response.text();
+                if (text) {
+                    message = text;
+                }
+            }
+            throw new Error(message);
+        }
+
+        const previewBlob = await response.blob();
+        const previewUrl = URL.createObjectURL(previewBlob);
+        revokeDebugPreviewUrl();
+        state.debugPreviewUrl = previewUrl;
+        state.debugPreviewError = '';
+        state.debugPreviewUpdatedAt = Date.now();
+        scheduleDebugPreviewRefresh();
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            return;
+        }
+        state.debugPreviewError = err.message || 'Failed to load camera preview.';
+        scheduleDebugPreviewRefresh(1800);
+    } finally {
+        state.debugPreviewLoading = false;
+        if (debugPreviewAbortController === controller) {
+            debugPreviewAbortController = null;
+        }
+        render();
+    }
+}
+
+function openDebug(push = true) {
+    if (push) {
+        const currentHash = window.location.hash || '#/';
+        if (!currentHash.startsWith('#/debug')) {
+            debugReturnHash = currentHash;
+        }
+        window.location.hash = '/debug';
+        return;
+    }
+
+    leaveDebugView();
+    state.view = 'debug-menu';
+    state.loading = false;
+    render();
+}
+
+async function openDebugCamera(push = true) {
+    if (push) {
+        const currentHash = window.location.hash || '#/';
+        if (!currentHash.startsWith('#/debug')) {
+            debugReturnHash = currentHash;
+        }
+        window.location.hash = '/debug/camera';
+        return;
+    }
+
+    stopDebugPreview();
+    state.loading = true;
+    render();
+    try {
+        await callDebugPreviewEndpoint('start');
+    } catch (err) {
+        state.loading = false;
+        state.view = 'debug-menu';
+        state.debugPreviewError = err.message || 'Failed to start camera preview.';
+        render();
+        return;
+    }
+
+    state.view = 'debug-camera';
+    state.loading = false;
+    state.debugPreviewError = '';
+    state.debugPreviewSessionActive = true;
+    render();
+    refreshDebugPreview();
+}
+
+function leaveDebugMenu() {
+    if (state.view === 'debug-camera') {
+        window.location.hash = '/debug';
+        return;
+    }
+    const targetHash = debugReturnHash && debugReturnHash !== '#/debug'
+        ? debugReturnHash
+        : '#/';
+    window.location.hash = targetHash.startsWith('#')
+        ? targetHash.substring(1)
+        : targetHash;
+}
+
 async function navigate() {
     const hash = window.location.hash;
-    if (hash.startsWith('#/dir/')) {
+    if (hash === '#/debug/camera') {
+        await openDebugCamera(false);
+    } else if (hash === '#/debug') {
+        openDebug(false);
+    } else if (hash.startsWith('#/dir/')) {
         const path = decodeURIComponent(hash.substring(6));
         await enterDirectory(path, false);
     } else {
@@ -196,6 +400,7 @@ async function navigate() {
 
 async function loadDashboard(push = true) {
     if (push) window.location.hash = '/';
+    leaveDebugView();
     state.loading = true; render();
     state.directories = await fetchAPI('/list');
     state.view = 'dashboard';
@@ -204,6 +409,7 @@ async function loadDashboard(push = true) {
 
 async function enterDirectory(path, push = true) {
     if (push) window.location.hash = `/dir/${encodeURIComponent(path)}`;
+    leaveDebugView();
     state.loading = true;
     state.currentPath = path; render();
     state.files = await fetchAPI(`/files?path=${encodeURIComponent(path)}`);
@@ -719,6 +925,58 @@ function render() {
             `;
         }
         app.innerHTML = html;
+    } else if (state.view === 'debug-menu') {
+        navLeft.innerHTML = `
+            <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
+            <li><strong>Debug</strong></li>
+        `;
+        navRight.innerHTML = ``;
+
+        app.innerHTML = `
+            <section class="debug-grid debug-menu-grid">
+                ${state.debugPreviewError ? `<article class="debug-card"><p class="debug-status error" style="margin:0;">${state.debugPreviewError}</p></article>` : ''}
+                <article class="debug-menu-card" onclick="openDebugCamera()">
+                    <strong>Camera Preview</strong>
+                    <p>Inspect the current camera frame captured and converted on the device.</p>
+                </article>
+                <article class="debug-menu-card disabled" aria-disabled="true">
+                    <strong>Logs</strong>
+                    <p>Reserved for runtime logs. Not implemented yet.</p>
+                </article>
+            </section>
+        `;
+    } else if (state.view === 'debug-camera') {
+        navLeft.innerHTML = `
+            <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
+            <li><strong>Camera Preview</strong></li>
+        `;
+        navRight.innerHTML = ``;
+
+        const statusText = state.debugPreviewError
+            ? state.debugPreviewError
+            : state.debugPreviewUpdatedAt
+                ? `Last frame ${formatDebugTimestamp(state.debugPreviewUpdatedAt)}`
+                : (state.debugPreviewLoading ? 'Loading first frame...' : 'Waiting for first frame...');
+
+        app.innerHTML = `
+            <section class="debug-grid">
+                <article class="debug-card">
+                    <header class="debug-card-header">
+                        <div>
+                            <strong>Camera Preview</strong>
+                            <p>Single-frame snapshots converted on the device.</p>
+                        </div>
+                    </header>
+                    <div class="debug-frame-shell">
+                        ${state.debugPreviewUrl
+                            ? `<img class="debug-frame-image" src="${state.debugPreviewUrl}" alt="Camera preview frame">`
+                            : `<div class="debug-frame-placeholder">${state.debugPreviewLoading ? 'Loading frame...' : 'No frame available yet'}</div>`}
+                    </div>
+                    <p class="debug-status${state.debugPreviewError ? ' error' : ''}">${statusText}</p>
+                    <small>Preview pauses when QR scanning or audio playback is active.</small>
+                </article>
+            </section>
+        `;
     } else {
         const uploadState = state.upload;
         const uploadInProgress = Boolean(uploadState);

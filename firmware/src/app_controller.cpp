@@ -35,7 +35,7 @@ void AppController::begin() {
     (void)qrService_.begin([this](const String &albumId) {
         return handleQrAlbumScanned(albumId);
     });
-    webServerService_.begin(&mediaService_);
+    webServerService_.begin(&mediaService_, &qrService_);
     wifiService_.begin([this]() {
         handleWifiConnected();
     }, [this](bool reopenPortal) {

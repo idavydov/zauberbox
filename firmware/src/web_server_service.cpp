@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <utime.h>
+#include <vector>
 
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -12,6 +13,7 @@
 
 #include "app_state.h"
 #include "config_service.h"
+#include "qr_service.h"
 
 namespace {
 
@@ -117,8 +119,9 @@ uint64_t fnv1a64UpdateUint64(uint64_t hash, uint64_t value) {
 
 } // namespace
 
-void WebServerService::begin(MediaService *mediaService) {
+void WebServerService::begin(MediaService *mediaService, QrService *qrService) {
     mediaService_ = mediaService;
+    qrService_ = qrService;
     if (!routesRegistered_) {
         registerRoutes();
         routesRegistered_ = true;
@@ -213,6 +216,15 @@ void WebServerService::registerRoutes() {
                [this]() {
                    handleUploadData();
                });
+    server_.on("/api/debug/camera-preview/start", HTTP_POST, [this]() {
+        handleDebugCameraPreviewStart();
+    });
+    server_.on("/api/debug/camera-preview/stop", HTTP_POST, [this]() {
+        handleDebugCameraPreviewStop();
+    });
+    server_.on("/api/debug/camera-frame", HTTP_GET, [this]() {
+        handleDebugCameraFrame();
+    });
 }
 
 bool WebServerService::ensureAuthorized() {
@@ -837,4 +849,65 @@ void WebServerService::handleUploadData() {
         uploadTargetHasClientTimestamp_ = false;
         uploadTargetLastWrite_ = 0;
     }
+}
+
+void WebServerService::handleDebugCameraFrame() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+    if (!qrService_) {
+        sendJsonError(500, "QR service unavailable");
+        return;
+    }
+
+    std::vector<uint8_t> jpegData;
+    String errorMessage;
+    if (!qrService_->captureDebugJpeg(&jpegData, &errorMessage)) {
+        const bool busy =
+            errorMessage.startsWith("Preview unavailable while QR scanning") ||
+            errorMessage.startsWith("Preview unavailable while audio");
+        sendJsonError(busy ? 409 : 503,
+                      errorMessage.isEmpty() ? "Failed to capture camera frame"
+                                             : errorMessage.c_str());
+        return;
+    }
+
+    server_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    server_.sendHeader("Pragma", "no-cache");
+    server_.setContentLength(jpegData.size());
+    server_.send(200, "image/jpeg", "");
+    server_.client().write(jpegData.data(), jpegData.size());
+}
+
+void WebServerService::handleDebugCameraPreviewStart() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+    if (!qrService_) {
+        sendJsonError(500, "QR service unavailable");
+        return;
+    }
+
+    String errorMessage;
+    if (!qrService_->beginDebugPreview(&errorMessage)) {
+        sendJsonError(409,
+                      errorMessage.isEmpty() ? "Failed to start camera preview"
+                                             : errorMessage.c_str());
+        return;
+    }
+
+    server_.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebServerService::handleDebugCameraPreviewStop() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+    if (!qrService_) {
+        sendJsonError(500, "QR service unavailable");
+        return;
+    }
+
+    qrService_->endDebugPreview();
+    server_.send(200, "application/json", "{\"success\":true}");
 }

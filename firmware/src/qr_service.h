@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include <functional>
+#include <vector>
 
 #include "app_state.h"
 
@@ -17,6 +18,9 @@ class QrService {
     bool submitDecodedPayload(const char *payload);
     bool isCameraReady() const;
     bool isScanning() const;
+    bool beginDebugPreview(String *errorMessage = nullptr);
+    void endDebugPreview();
+    bool captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMessage = nullptr);
 
   private:
     static bool parseAlbumId(const char *payload, String *albumId);
@@ -24,7 +28,8 @@ class QrService {
     void pollDecodedQrs();
     bool startScanning();
     void stopScanning();
-    bool initCamera();
+    void stopDebugPreviewSession(bool resumeScanning);
+    bool initCamera(bool startDecoderTask);
     void deinitCamera();
     void handleStateTransition(AppState state);
     void startScanSession();
@@ -44,4 +49,6 @@ class QrService {
     bool cameraInitialized_ = false;
     bool scanning_ = false;
     bool available_ = false;
+    bool debugPreviewActive_ = false;
+    bool debugPreviewResumeScanOnExit_ = false;
 };
