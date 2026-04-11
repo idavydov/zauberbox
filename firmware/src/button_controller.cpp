@@ -1,5 +1,7 @@
 #include "button_controller.h"
 
+#include "debug_log.h"
+
 #include "app_state.h"
 #include "config_service.h"
 #include "io_expander.h"

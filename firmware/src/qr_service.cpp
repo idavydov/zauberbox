@@ -5,6 +5,7 @@
 
 #include "app_state.h"
 #include "audio_driver.h"
+#include "debug_log.h"
 #include "io_expander.h"
 #include "qr_reader/ESP32QRCodeReader.h"
 

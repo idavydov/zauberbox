@@ -5,6 +5,7 @@
 #include "app_state.h"
 #include "audio_driver.h"
 #include "config_service.h"
+#include "debug_log.h"
 
 namespace {
 

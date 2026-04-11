@@ -45,6 +45,7 @@ class WebServerService {
     void handleDebugCameraPreviewStart();
     void handleDebugCameraPreviewStop();
     void handleDebugCameraFrame();
+    void handleDebugLogs();
 
     WebServer server_{80};
     MediaService *mediaService_ = nullptr;

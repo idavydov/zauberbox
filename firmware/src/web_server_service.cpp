@@ -13,6 +13,7 @@
 
 #include "app_state.h"
 #include "config_service.h"
+#include "debug_log.h"
 #include "qr_service.h"
 
 namespace {
@@ -224,6 +225,9 @@ void WebServerService::registerRoutes() {
     });
     server_.on("/api/debug/camera-frame", HTTP_GET, [this]() {
         handleDebugCameraFrame();
+    });
+    server_.on("/api/debug/logs", HTTP_GET, [this]() {
+        handleDebugLogs();
     });
 }
 
@@ -918,4 +922,26 @@ void WebServerService::handleDebugCameraPreviewStop() {
                   AppStateStore::wifiModeName(appStateStore().wifiMode()));
     qrService_->endDebugPreview();
     server_.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebServerService::handleDebugLogs() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    int limit = 120;
+    if (server_.hasArg("limit")) {
+        const int requestedLimit = server_.arg("limit").toInt();
+        if (requestedLimit > 0) {
+            limit = requestedLimit;
+        }
+    }
+    if (limit > 160) {
+        limit = 160;
+    }
+
+    const String body = debugLogService().snapshotText(static_cast<size_t>(limit));
+    server_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    server_.sendHeader("Pragma", "no-cache");
+    server_.send(200, "text/plain; charset=utf-8", body);
 }

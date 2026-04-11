@@ -1,5 +1,7 @@
 #include "config_service.h"
 
+#include "debug_log.h"
+
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 

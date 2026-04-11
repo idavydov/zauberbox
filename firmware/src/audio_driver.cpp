@@ -1,5 +1,7 @@
 #include "audio_driver.h"
 
+#include "debug_log.h"
+
 #include <Audio.h>
 #include <FS.h>
 #include <LittleFS.h>

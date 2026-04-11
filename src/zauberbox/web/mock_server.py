@@ -87,6 +87,16 @@ def debug_camera_preview_start():
 def debug_camera_preview_stop():
     return jsonify({"success": True})
 
+@app.route('/api/debug/logs')
+def debug_logs():
+    body = """[101] [12034 ms] Initializing Zauberbox...
+[102] [12640 ms] App state: Boot -> QrScan (wifi=Disabled)
+[103] [12642 ms] QR service: startScanning requested in state=QrScan camera=0 preview=0 nextRetryAt=0.
+[104] [12758 ms] QR service: OV5640 camera initialized (decoder=1).
+[105] [12760 ms] QR service: scanner active.
+"""
+    return app.response_class(body, mimetype='text/plain')
+
 @app.route('/api/mkdir', methods=['POST'])
 def mkdir():
     data = request.json

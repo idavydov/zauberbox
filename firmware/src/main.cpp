@@ -2,6 +2,7 @@
 #include <LittleFS.h>
 #include <Wire.h>
 #include "app_controller.h"
+#include "debug_log.h"
 #include "io_expander.h"
 
 constexpr uint8_t kI2cScl = 10;
@@ -12,6 +13,7 @@ AppController gAppController;
 void setup() {
     Serial.begin(115200);
     delay(500); // Give serial some time
+    debugLogService().begin();
     Serial.println("Initializing Zauberbox...");
 
     Wire.begin(kI2cSda, kI2cScl);

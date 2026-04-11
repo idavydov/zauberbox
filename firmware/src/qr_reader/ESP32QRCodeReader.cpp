@@ -2,6 +2,7 @@
 
 #include "quirc/quirc.h"
 #include "Arduino.h"
+#include "../debug_log.h"
 
 ESP32QRCodeReader::ESP32QRCodeReader() : ESP32QRCodeReader(CAMERA_MODEL_AI_THINKER, FRAMESIZE_QVGA)
 {

@@ -1,5 +1,7 @@
 #include "media_service.h"
 
+#include "debug_log.h"
+
 #include <SD_MMC.h>
 #include <strings.h>
 

@@ -1,5 +1,7 @@
 #include "io_expander.h"
 
+#include "debug_log.h"
+
 #include <TCA9555.h>
 #include <Wire.h>
 #include "freertos/semphr.h"

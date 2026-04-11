@@ -69,6 +69,7 @@
 
 #include "AyresWiFiManager.h"
 #include <ArduinoJson.h>
+#include "../../debug_log.h"
 #include "AWM_Logging.h"
 
 #if defined(ESP32)

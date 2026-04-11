@@ -2,6 +2,8 @@
 
 #include <freertos/FreeRTOS.h>
 
+#include "debug_log.h"
+
 bool AppStateStore::isValidTransition(AppState fromState, AppState toState) const {
     if (fromState == toState) {
         return true;

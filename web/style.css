@@ -328,6 +328,27 @@ body {
 .debug-status.error {
     color: var(--pico-error-background);
 }
+.debug-log-shell {
+    overflow: auto;
+    border: 1px solid #000;
+    border-radius: calc(var(--pico-border-radius) - 2px);
+    background: #000;
+    max-height: 65vh;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+.debug-log-output {
+    margin: 0;
+    padding: 1rem;
+    min-height: 18rem;
+    background: #000;
+    color: #f8fafc;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+    text-shadow: none;
+}
 
 /* Drag & Drop Overlay */
 .upload-item.drag-over::after {

@@ -4,6 +4,7 @@
 #include <WiFi.h>
 
 #include "config_service.h"
+#include "debug_log.h"
 
 namespace {
 

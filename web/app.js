@@ -25,11 +25,17 @@ let state = {
     debugPreviewError: '',
     debugPreviewUpdatedAt: 0,
     debugPreviewSessionActive: false,
+    debugLogsText: '',
+    debugLogsLoading: false,
+    debugLogsError: '',
+    debugLogsUpdatedAt: 0,
     selectionMode: false,
     selectedDirs: new Set()
 };
 let debugPreviewTimerId = 0;
 let debugPreviewAbortController = null;
+let debugLogsTimerId = 0;
+let debugLogsAbortController = null;
 let debugReturnHash = '#/';
 
 const MOCK_DATA = [
@@ -153,6 +159,15 @@ function formatBytes(bytes) {
     return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
 function updateUploadState(patch) {
     if (!state.upload) {
         return;
@@ -240,6 +255,20 @@ function stopDebugPreview({ clearImage = false, stopSession = false } = {}) {
     }
 }
 
+function stopDebugLogs({ clearText = false } = {}) {
+    if (debugLogsTimerId) {
+        window.clearTimeout(debugLogsTimerId);
+        debugLogsTimerId = 0;
+    }
+    if (debugLogsAbortController) {
+        debugLogsAbortController.abort();
+        debugLogsAbortController = null;
+    }
+    if (clearText) {
+        state.debugLogsText = '';
+    }
+}
+
 function scheduleDebugPreviewRefresh(delayMs = 1200) {
     if (state.view !== 'debug-camera') {
         return;
@@ -253,12 +282,29 @@ function scheduleDebugPreviewRefresh(delayMs = 1200) {
     }, delayMs);
 }
 
+function scheduleDebugLogsRefresh(delayMs = 1500) {
+    if (state.view !== 'debug-logs') {
+        return;
+    }
+    if (debugLogsTimerId) {
+        window.clearTimeout(debugLogsTimerId);
+    }
+    debugLogsTimerId = window.setTimeout(() => {
+        debugLogsTimerId = 0;
+        refreshDebugLogs();
+    }, delayMs);
+}
+
 function leaveDebugView() {
     stopDebugPreview({ clearImage: true, stopSession: true });
+    stopDebugLogs({ clearText: true });
     state.debugPreviewLoading = false;
     state.debugPreviewError = '';
     state.debugPreviewUpdatedAt = 0;
     state.debugPreviewSessionActive = false;
+    state.debugLogsLoading = false;
+    state.debugLogsError = '';
+    state.debugLogsUpdatedAt = 0;
 }
 
 function formatDebugTimestamp(timestamp) {
@@ -324,6 +370,44 @@ async function refreshDebugPreview() {
     }
 }
 
+async function refreshDebugLogs() {
+    if (state.view !== 'debug-logs' || debugLogsAbortController) {
+        return;
+    }
+
+    state.debugLogsLoading = true;
+    render();
+
+    const controller = new AbortController();
+    debugLogsAbortController = controller;
+    try {
+        const response = await fetch(`${API_BASE}/debug/logs?limit=160&ts=${Date.now()}`, {
+            cache: 'no-store',
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to load logs (${response.status})`);
+        }
+
+        state.debugLogsText = await response.text();
+        state.debugLogsError = '';
+        state.debugLogsUpdatedAt = Date.now();
+        scheduleDebugLogsRefresh();
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            return;
+        }
+        state.debugLogsError = err.message || 'Failed to load logs.';
+        scheduleDebugLogsRefresh(2200);
+    } finally {
+        state.debugLogsLoading = false;
+        if (debugLogsAbortController === controller) {
+            debugLogsAbortController = null;
+        }
+        render();
+    }
+}
+
 function openDebug(push = true) {
     if (push) {
         const currentHash = window.location.hash || '#/';
@@ -371,8 +455,27 @@ async function openDebugCamera(push = true) {
     refreshDebugPreview();
 }
 
+function openDebugLogs(push = true) {
+    if (push) {
+        const currentHash = window.location.hash || '#/';
+        if (!currentHash.startsWith('#/debug')) {
+            debugReturnHash = currentHash;
+        }
+        window.location.hash = '/debug/logs';
+        return;
+    }
+
+    stopDebugPreview({ clearImage: true, stopSession: true });
+    stopDebugLogs();
+    state.view = 'debug-logs';
+    state.loading = false;
+    state.debugLogsError = '';
+    render();
+    refreshDebugLogs();
+}
+
 function leaveDebugMenu() {
-    if (state.view === 'debug-camera') {
+    if (state.view === 'debug-camera' || state.view === 'debug-logs') {
         window.location.hash = '/debug';
         return;
     }
@@ -388,6 +491,8 @@ async function navigate() {
     const hash = window.location.hash;
     if (hash === '#/debug/camera') {
         await openDebugCamera(false);
+    } else if (hash === '#/debug/logs') {
+        openDebugLogs(false);
     } else if (hash === '#/debug') {
         openDebug(false);
     } else if (hash.startsWith('#/dir/')) {
@@ -885,6 +990,18 @@ function render() {
     const navLeft = document.getElementById('nav-left');
     const navRight = document.getElementById('nav-right');
     
+    // Capture scroll position of logs if they exist
+    let logsScroll = null;
+    const oldLogShell = document.querySelector('.debug-log-shell');
+    if (oldLogShell) {
+        logsScroll = {
+            top: oldLogShell.scrollTop,
+            height: oldLogShell.scrollHeight,
+            client: oldLogShell.clientHeight,
+            atBottom: (oldLogShell.scrollHeight - oldLogShell.scrollTop) <= (oldLogShell.clientHeight + 20)
+        };
+    }
+
     if (state.loading) {
         app.innerHTML = '<div aria-busy="true" id="loading">Working...</div>';
         return;
@@ -939,9 +1056,9 @@ function render() {
                     <strong>Camera Preview</strong>
                     <p>Inspect the current camera frame captured and converted on the device.</p>
                 </article>
-                <article class="debug-menu-card disabled" aria-disabled="true">
+                <article class="debug-menu-card" onclick="openDebugLogs()">
                     <strong>Logs</strong>
-                    <p>Reserved for runtime logs. Not implemented yet.</p>
+                    <p>View recent firmware log output captured on the device.</p>
                 </article>
             </section>
         `;
@@ -977,6 +1094,55 @@ function render() {
                 </article>
             </section>
         `;
+    } else if (state.view === 'debug-logs') {
+        navLeft.innerHTML = `
+            <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
+            <li><strong>Logs</strong></li>
+        `;
+        navRight.innerHTML = ``;
+
+        const statusText = state.debugLogsError
+            ? state.debugLogsError
+            : state.debugLogsUpdatedAt
+                ? `Last update ${formatDebugTimestamp(state.debugLogsUpdatedAt)}`
+                : (state.debugLogsLoading ? 'Loading logs...' : 'Waiting for first log fetch...');
+
+        // Surgical update: If we are already in the logs view, just update the text
+        const existingOutput = document.querySelector('.debug-log-output');
+        const existingStatus = document.querySelector('.debug-status');
+        if (existingOutput && existingStatus) {
+            const shell = existingOutput.parentElement;
+            const atBottom = (shell.scrollHeight - shell.scrollTop) <= (shell.clientHeight + 20);
+            
+            existingOutput.textContent = state.debugLogsText || '';
+            existingStatus.textContent = statusText;
+            existingStatus.className = `debug-status${state.debugLogsError ? ' error' : ''}`;
+            
+            if (atBottom) {
+                shell.scrollTop = shell.scrollHeight;
+            }
+        } else {
+            app.innerHTML = `
+                <section class="debug-grid">
+                    <article class="debug-card">
+                        <header class="debug-card-header">
+                            <div>
+                                <strong>Logs</strong>
+                                <p>Recent firmware log lines stored in the device memory buffer.</p>
+                            </div>
+                        </header>
+                        <div class="debug-log-shell">
+                            <pre class="debug-log-output">${escapeHtml(state.debugLogsText || '')}</pre>
+                        </div>
+                        <p class="debug-status${state.debugLogsError ? ' error' : ''}">${statusText}</p>
+                        <small>Logs refresh automatically. The buffer keeps only the most recent entries.</small>
+                    </article>
+                </section>
+            `;
+            // Scroll to bottom on initial load
+            const shell = app.querySelector('.debug-log-shell');
+            if (shell) shell.scrollTop = shell.scrollHeight;
+        }
     } else {
         const uploadState = state.upload;
         const uploadInProgress = Boolean(uploadState);
@@ -1093,6 +1259,23 @@ function render() {
         html += `</div>`;
         app.innerHTML = html;
         setupDragAndDrop();
+    }
+
+    // Restore or fix scroll for logs
+    if (state.view === 'debug-logs') {
+        const newLogShell = document.querySelector('.debug-log-shell');
+        if (newLogShell) {
+            if (logsScroll) {
+                if (logsScroll.atBottom) {
+                    newLogShell.scrollTop = newLogShell.scrollHeight;
+                } else {
+                    newLogShell.scrollTop = logsScroll.top;
+                }
+            } else {
+                // First load of the logs view, scroll to bottom to see newest logs
+                newLogShell.scrollTop = newLogShell.scrollHeight;
+            }
+        }
     }
 }
 
