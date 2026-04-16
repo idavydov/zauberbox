@@ -1,6 +1,7 @@
 import os
 import gzip
 import minify_html
+import base64
 
 def build():
     # Project root is 4 levels up from this script (src/zauberbox/web/build_web.py)
@@ -16,6 +17,7 @@ def build():
     style_path = os.path.join(web_src_dir, "style.css")
     app_path = os.path.join(web_src_dir, "app.js")
     qr_path = os.path.join(web_src_dir, "qrcode.min.js")
+    favicon_path = os.path.join(web_src_dir, "favicon.png")
     
     # Use app.html to avoid collision with WiFiManager's index.html
     output_path = os.path.join(dist_dir, "index.html")
@@ -24,6 +26,12 @@ def build():
 
     with open(index_path, "r") as f:
         content = f.read()
+
+    # Inline favicon
+    if os.path.exists(favicon_path):
+        with open(favicon_path, "rb") as f:
+            favicon_b64 = base64.b64encode(f.read()).decode("utf-8")
+        content = content.replace('href="favicon.png"', f'href="data:image/png;base64,{favicon_b64}"')
 
     # Inline Pico CSS
     with open(pico_path, "r") as f:
