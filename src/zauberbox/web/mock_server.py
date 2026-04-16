@@ -97,6 +97,29 @@ def debug_logs():
 """
     return app.response_class(body, mimetype='text/plain')
 
+@app.route('/api/status')
+def status():
+    return jsonify({
+        "app_state": "QrScan",
+        "wifi_mode": "Connected",
+        "battery": {
+            "initialized": True,
+            "has_reading": True,
+            "reading_available": True,
+            "reading_stable": True,
+            "availability": "available",
+            "adc_mv": 1318,
+            "voltage_mv": 3992,
+            "voltage_v": 3.992,
+            "percent": 84,
+            "is_low": False,
+            "is_critical": False,
+            "power_source": "unknown",
+            "power_source_known": False,
+            "updated_at_ms": 18420,
+        }
+    })
+
 @app.route('/api/mkdir', methods=['POST'])
 def mkdir():
     data = request.json

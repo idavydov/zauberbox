@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "battery_service.h"
 #include "button_controller.h"
 #include "led_controller.h"
 #include "media_service.h"

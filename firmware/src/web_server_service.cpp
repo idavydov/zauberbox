@@ -12,6 +12,7 @@
 #include <WiFi.h>
 
 #include "app_state.h"
+#include "battery_service.h"
 #include "config_service.h"
 #include "debug_log.h"
 #include "qr_service.h"
@@ -180,6 +181,9 @@ void WebServerService::registerRoutes() {
 
     server_.on("/api/auth/password", HTTP_POST, [this]() {
         handleUpdatePassword();
+    });
+    server_.on("/api/status", HTTP_GET, [this]() {
+        handleStatus();
     });
 
     for (const char *asset : {"/style.css", "/app.js", "/pico.min.css", "/qrcode.min.js"}) {
@@ -944,4 +948,40 @@ void WebServerService::handleDebugLogs() {
     server_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     server_.sendHeader("Pragma", "no-cache");
     server_.send(200, "text/plain; charset=utf-8", body);
+}
+
+void WebServerService::handleStatus() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    const AppRuntimeSnapshot runtime = appStateStore().snapshot();
+    const BatterySnapshot battery = batteryService().snapshot();
+
+    StaticJsonDocument<384> response;
+    response["app_state"] = AppStateStore::stateName(runtime.appState);
+    response["wifi_mode"] = AppStateStore::wifiModeName(runtime.wifiMode);
+
+    JsonObject batteryObject = response.createNestedObject("battery");
+    batteryObject["initialized"] = battery.initialized;
+    batteryObject["has_reading"] = battery.hasReading;
+    batteryObject["reading_available"] = battery.readingAvailable;
+    batteryObject["reading_stable"] = battery.readingStable;
+    batteryObject["availability"] = BatteryService::availabilityName(battery.availability);
+    batteryObject["adc_mv"] = battery.rawAdcMilliVolts;
+    batteryObject["voltage_mv"] = battery.batteryMilliVolts;
+    batteryObject["voltage_v"] =
+        battery.hasReading ? static_cast<float>(battery.batteryMilliVolts) / 1000.0F : 0.0F;
+    batteryObject["percent"] = battery.percent;
+    batteryObject["is_low"] = battery.low;
+    batteryObject["is_critical"] = battery.critical;
+    batteryObject["power_source"] = BatteryService::powerSourceName(battery.powerSource);
+    batteryObject["power_source_known"] = battery.powerSource != BatteryPowerSource::Unknown;
+    batteryObject["updated_at_ms"] = battery.updatedAtMs;
+
+    String body;
+    serializeJson(response, body);
+    server_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    server_.sendHeader("Pragma", "no-cache");
+    server_.send(200, "application/json", body);
 }

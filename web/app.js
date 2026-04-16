@@ -18,6 +18,8 @@ let state = {
     currentPath: null,
     directories: [],
     files: [],
+    deviceStatus: null,
+    deviceStatusError: '',
     loading: true,
     upload: null,
     debugPreviewUrl: null,
@@ -37,6 +39,8 @@ let debugPreviewTimerId = 0;
 let debugPreviewAbortController = null;
 let debugLogsTimerId = 0;
 let debugLogsAbortController = null;
+let deviceStatusTimerId = 0;
+let deviceStatusAbortController = null;
 let debugReturnHash = '#/';
 
 const MOCK_DATA = [
@@ -260,6 +264,63 @@ function stopDebugLogs({ clearText = false } = {}) {
     }
 }
 
+function stopDeviceStatusRefresh() {
+    if (deviceStatusTimerId) {
+        window.clearTimeout(deviceStatusTimerId);
+        deviceStatusTimerId = 0;
+    }
+    if (deviceStatusAbortController) {
+        deviceStatusAbortController.abort();
+        deviceStatusAbortController = null;
+    }
+}
+
+function scheduleDeviceStatusRefresh(delayMs = 15000) {
+    if (state.loading || state.error) {
+        return;
+    }
+    if (deviceStatusTimerId) {
+        window.clearTimeout(deviceStatusTimerId);
+    }
+    deviceStatusTimerId = window.setTimeout(() => {
+        deviceStatusTimerId = 0;
+        refreshDeviceStatus();
+    }, delayMs);
+}
+
+async function refreshDeviceStatus() {
+    if (deviceStatusAbortController) {
+        return;
+    }
+
+    const controller = new AbortController();
+    deviceStatusAbortController = controller;
+    try {
+        const response = await fetch(`${API_BASE}/status?ts=${Date.now()}`, {
+            cache: 'no-store',
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to load device status (${response.status})`);
+        }
+
+        state.deviceStatus = await response.json();
+        state.deviceStatusError = '';
+        scheduleDeviceStatusRefresh();
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            return;
+        }
+        state.deviceStatusError = err.message || 'Failed to load device status.';
+        scheduleDeviceStatusRefresh(30000);
+    } finally {
+        if (deviceStatusAbortController === controller) {
+            deviceStatusAbortController = null;
+        }
+        render();
+    }
+}
+
 function scheduleDebugPreviewRefresh(delayMs = 1200) {
     if (state.view !== 'debug-camera') {
         return;
@@ -307,6 +368,41 @@ function formatDebugTimestamp(timestamp) {
         minute: '2-digit',
         second: '2-digit'
     });
+}
+
+function formatBatteryVoltage(millivolts) {
+    if (!Number.isFinite(millivolts) || millivolts <= 0) {
+        return '';
+    }
+    return `${(millivolts / 1000).toFixed(2)} V`;
+}
+
+function batterySummaryText() {
+    const battery = state.deviceStatus?.battery;
+    if (!battery?.initialized) {
+        return 'Battery telemetry not initialized.';
+    }
+    if (!battery?.reading_available) {
+        return 'Battery reading unavailable.';
+    }
+    if (!battery?.has_reading) {
+        return 'Waiting for first battery reading...';
+    }
+    if (!battery?.reading_stable || battery?.availability === 'settling') {
+        const voltage = formatBatteryVoltage(battery.voltage_mv);
+        return voltage ? `Battery settling · ${voltage}` : 'Battery settling...';
+    }
+
+    const parts = [
+        `${battery.percent}%`,
+        formatBatteryVoltage(battery.voltage_mv)
+    ];
+    if (battery.power_source_known) {
+        parts.push(battery.power_source === 'battery' ? 'On battery' : 'External power');
+    } else {
+        parts.push('Power source unknown');
+    }
+    return parts.join(' · ');
 }
 
 async function refreshDebugPreview() {
@@ -508,6 +604,9 @@ async function loadDashboard(push = true) {
     } finally {
         state.loading = false;
         render();
+        if (!state.error) {
+            refreshDeviceStatus();
+        }
     }
 }
 
@@ -529,6 +628,9 @@ async function enterDirectory(path, push = true) {
     } finally {
         state.loading = false;
         render();
+        if (!state.error) {
+            refreshDeviceStatus();
+        }
     }
 }
 
@@ -1026,10 +1128,23 @@ function render() {
     }
 
     if (state.view === 'dashboard') {
+        const battery = state.deviceStatus?.battery;
+        const batterySummary = batterySummaryText();
+        const batteryStateClass = battery?.is_critical
+            ? 'critical'
+            : battery?.is_low
+                ? 'low'
+                : '';
+        const batteryDetail = state.deviceStatusError || 'Voltage-based estimate. Power-source detection is not wired yet.';
+
         navLeft.innerHTML = `<li><strong>Zauberbox</strong></li>`;
-        navRight.innerHTML = `<li><button class="${state.selectionMode ? 'primary' : 'contrast outline'}" style="padding: 4px 8px;" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select'}</button></li>`;
-        
-        let html = `<div class="${state.selectionMode ? 'selection-mode' : ''}"><h2>Directories</h2><div class="dir-grid">`;
+        navRight.innerHTML = `
+            <li class="nav-battery ${batteryStateClass}" title="${escapeHtml(batteryDetail)}">${escapeHtml(batterySummary)}</li>
+            <li><button class="${state.selectionMode ? 'primary' : 'contrast outline'}" style="padding: 4px 8px;" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select'}</button></li>
+        `;
+
+        let html = `<div class="${state.selectionMode ? 'selection-mode' : ''}">`;
+        html += `<h2>Directories</h2><div class="dir-grid">`;
         state.directories.forEach(dir => {
             const isSelected = state.selectedDirs.has(dir.name);
             html += `
@@ -1298,4 +1413,5 @@ function render() {
 }
 
 window.addEventListener('hashchange', navigate);
+window.addEventListener('beforeunload', stopDeviceStatusRefresh);
 window.onload = navigate;

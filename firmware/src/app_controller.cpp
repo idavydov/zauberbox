@@ -4,6 +4,7 @@
 
 #include "app_state.h"
 #include "audio_driver.h"
+#include "battery_service.h"
 #include "config_service.h"
 #include "debug_log.h"
 
@@ -23,6 +24,7 @@ constexpr char kWifiMdnsHostname[] = "zauberbox";
 void AppController::begin() {
     appStateStore().init();
     configService().begin();
+    batteryService().begin();
 
     buttonController_.begin();
     ledController_.begin();
@@ -48,6 +50,7 @@ void AppController::begin() {
 
 void AppController::update() {
     handlePendingButtonEvents();
+    batteryService().update();
     wifiService_.update();
     webServerService_.update();
     qrService_.update();

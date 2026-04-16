@@ -10,6 +10,25 @@ body {
 }
 
 /* Dashboard Styles */
+.nav-battery {
+    align-self: center;
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.74rem;
+    color: var(--pico-muted-color);
+    opacity: 0.8;
+}
+.nav-battery.low {
+    color: #b45309;
+    opacity: 0.95;
+}
+.nav-battery.critical {
+    color: var(--pico-error-background);
+    opacity: 1;
+}
+
 .dir-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
