@@ -2,9 +2,13 @@ from flask import Flask, request, send_from_directory, send_file, jsonify
 import os
 import shutil
 import argparse
+import time
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+
+# Server start time for dynamic logs
+START_TIME = time.time()
 
 # Configurable storage directory
 STORAGE_DIR = "mock_sd"
@@ -95,6 +99,19 @@ def debug_logs():
 [104] [12758 ms] QR service: OV5640 camera initialized (decoder=1).
 [105] [12760 ms] QR service: scanner active.
 """
+    # Append dynamic lines every 5 seconds
+    elapsed = int(time.time() - START_TIME)
+    steps = elapsed // 5
+    for i in range(1, steps + 1):
+        ts = 13000 + i * 5000
+        line_num = 105 + i
+        body += f"[{line_num}] [{ts} ms] Mock event: heartbeat tick {i}...\n"
+    
+    # Keep it manageable
+    lines = body.splitlines()
+    if len(lines) > 50:
+        body = "\n".join(lines[-50:]) + "\n"
+
     return app.response_class(body, mimetype='text/plain')
 
 @app.route('/api/status')

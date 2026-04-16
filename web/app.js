@@ -1247,13 +1247,23 @@ function render() {
             const shell = existingOutput.parentElement;
             const atBottom = (shell.scrollHeight - shell.scrollTop) <= (shell.clientHeight + 20);
             
-            existingOutput.textContent = state.debugLogsText || '';
+            // Avoid resetting selection if user is currently selecting text
+            const selection = window.getSelection();
+            const hasSelection = selection && selection.toString().length > 0;
+            const isSelectionInOutput = hasSelection && existingOutput.contains(selection.anchorNode);
+
+            if (!isSelectionInOutput) {
+                const newText = state.debugLogsText || '';
+                if (existingOutput.textContent !== newText) {
+                    existingOutput.textContent = newText;
+                    if (atBottom) {
+                        shell.scrollTop = shell.scrollHeight;
+                    }
+                }
+            }
+            
             existingStatus.textContent = statusText;
             existingStatus.className = `debug-status${state.debugLogsError ? ' error' : ''}`;
-            
-            if (atBottom) {
-                shell.scrollTop = shell.scrollHeight;
-            }
         } else {
             app.innerHTML = `
                 <section class="debug-grid">
