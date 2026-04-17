@@ -98,7 +98,6 @@ uint16_t bootstrapBatteryRawMilliVolts() {
 
 void BatteryService::begin() {
     analogReadResolution(12);
-    analogSetPinAttenuation(kBatteryAdcPin, ADC_11db);
 
     clearMeasurementHistory();
     nextSampleAtMs_ = 0;
