@@ -11,6 +11,10 @@ constexpr uint32_t kLowBatteryBlinkPeriodMs = 4000;
 constexpr uint32_t kLowBatteryBlinkOnMs = 180;
 constexpr uint8_t kBatteryHighPercentThreshold = 90;
 constexpr uint32_t kPlayingRainbowWindowMs = 10000;
+constexpr uint32_t kLowPowerPlayingCyclePeriodMs = 8000;
+constexpr uint32_t kLowPowerPlayingBreathStartMs = 6000;
+constexpr uint32_t kLowPowerPlayingBreathDurationMs = 2000;
+constexpr float kLowPowerPlayingBreathPeakBrightness = 40.0F;
 constexpr uint32_t kSparsePausedPulsePeriodMs = 3000;
 constexpr uint32_t kSparsePausedPulseOnMs = 140;
 
@@ -157,21 +161,39 @@ void LedController::runTask() {
                 break;
             }
             case AppState::Playing: {
+                hue += 160;
+
+                float targetBrightness = 140.0f;
+                int currentDelay = 45;
+                bool useLowPowerRainbow = false;
+
                 if (shouldLimitPlayingRainbow(battery) &&
                     playingStartedAtMs != 0 &&
-                    millis() - playingStartedAtMs >= kPlayingRainbowWindowMs) {
-                    ring_.clear();
-                    ring_.show();
-                    vTaskDelay(pdMS_TO_TICKS(60));
-                    break;
+                    (millis() - playingStartedAtMs >= kPlayingRainbowWindowMs)) {
+                    const uint32_t phase = millis() % kLowPowerPlayingCyclePeriodMs;
+                    if (phase < kLowPowerPlayingBreathStartMs) {
+                        targetBrightness = 0.0f;
+                    } else {
+                        const float breathPhase =
+                            (phase - kLowPowerPlayingBreathStartMs) /
+                            static_cast<float>(kLowPowerPlayingBreathDurationMs);
+                        const float wave = sin(breathPhase * PI);
+                        const float breath = wave * wave;
+                        targetBrightness =
+                            constrain(breath * kLowPowerPlayingBreathPeakBrightness, 0.0f, 255.0f);
+                    }
+                    currentDelay = 60;
+                    useLowPowerRainbow = true;
                 }
 
                 for (int i = 0; i < kLedCount; i++) {
-                    ring_.setPixelColor(i, ring_.gamma32(ring_.ColorHSV(hue + (i * 65536 / kLedCount))));
+                    uint16_t pixelHue = hue + (i * 65536 / kLedCount);
+                    uint32_t color = ring_.ColorHSV(pixelHue, 220, static_cast<uint8_t>(targetBrightness));
+                    ring_.setPixelColor(i, useLowPowerRainbow ? color : ring_.gamma32(color));
                 }
+
                 ring_.show();
-                hue += 240;
-                vTaskDelay(pdMS_TO_TICKS(35));
+                vTaskDelay(pdMS_TO_TICKS(currentDelay));
                 break;
             }
             case AppState::Paused: {
