@@ -9,6 +9,8 @@ constexpr uint8_t kLedPin = 38;
 constexpr uint16_t kLedCount = 7;
 constexpr uint32_t kLowBatteryBlinkPeriodMs = 4000;
 constexpr uint32_t kLowBatteryBlinkOnMs = 180;
+constexpr uint8_t kBatteryHighPercentThreshold = 90;
+constexpr uint32_t kPlayingRainbowWindowMs = 10000;
 
 bool shouldShowLowBatteryBlink(AppState state, const BatterySnapshot &battery) {
     if (state == AppState::Boot ||
@@ -27,6 +29,15 @@ bool shouldShowLowBatteryBlink(AppState state, const BatterySnapshot &battery) {
     }
 
     return (millis() % kLowBatteryBlinkPeriodMs) < kLowBatteryBlinkOnMs;
+}
+
+bool shouldLimitPlayingRainbow(const BatterySnapshot &battery) {
+    return battery.initialized &&
+           battery.hasReading &&
+           battery.readingAvailable &&
+           battery.readingStable &&
+           battery.availability == BatteryAvailability::Available &&
+           battery.percent < kBatteryHighPercentThreshold;
 }
 
 } // namespace
@@ -57,10 +68,21 @@ void LedController::taskEntry(void *context) {
 void LedController::runTask() {
     uint16_t hue = 0;
     uint8_t scanFrame = 0;
+    AppState lastState = AppState::Boot;
+    uint32_t playingStartedAtMs = 0;
 
     while (true) {
         const AppState state = appStateStore().current();
         const BatterySnapshot battery = batteryService().snapshot();
+
+        if (state != lastState) {
+            if (state == AppState::Playing && lastState != AppState::Paused) {
+                playingStartedAtMs = millis();
+            } else if (state != AppState::Playing && state != AppState::Paused) {
+                playingStartedAtMs = 0;
+            }
+            lastState = state;
+        }
 
         if (shouldShowLowBatteryBlink(state, battery)) {
             for (int i = 0; i < kLedCount; i++) {
@@ -129,6 +151,15 @@ void LedController::runTask() {
                 break;
             }
             case AppState::Playing: {
+                if (shouldLimitPlayingRainbow(battery) &&
+                    playingStartedAtMs != 0 &&
+                    millis() - playingStartedAtMs >= kPlayingRainbowWindowMs) {
+                    ring_.clear();
+                    ring_.show();
+                    vTaskDelay(pdMS_TO_TICKS(60));
+                    break;
+                }
+
                 for (int i = 0; i < kLedCount; i++) {
                     ring_.setPixelColor(i, ring_.gamma32(ring_.ColorHSV(hue + (i * 65536 / kLedCount))));
                 }
