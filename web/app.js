@@ -1,9 +1,3 @@
-/**
- * Lucide Icons (ISC License)
- * Copyright (c) 2022 Lucide Contributors
- * Copyright (c) 2013-2022 Cole Bemis (part of Feather Icons, MIT)
- */
-
 const API_BASE = '/api';
 const COVER_MAX_DIMENSION = 1600;
 const COVER_JPEG_QUALITIES = [0.82, 0.72, 0.62];
@@ -49,6 +43,10 @@ const MOCK_DATA = [
     { name: "003", cover: "https://picsum.photos/seed/3/400", first_mp3: "bedtime_story.mp3" }
 ];
 
+/**
+ * Lucide Icons (ISC License)
+ * https://lucide.dev/
+ */
 const ICONS = {
     music: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-music-icon lucide-music"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
     edit: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-pen-icon lucide-square-pen"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>`,
