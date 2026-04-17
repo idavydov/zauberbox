@@ -1,11 +1,33 @@
 #include "led_controller.h"
 
 #include "app_state.h"
+#include "battery_service.h"
 
 namespace {
 
 constexpr uint8_t kLedPin = 38;
 constexpr uint16_t kLedCount = 7;
+constexpr uint32_t kLowBatteryBlinkPeriodMs = 4000;
+constexpr uint32_t kLowBatteryBlinkOnMs = 180;
+
+bool shouldShowLowBatteryBlink(AppState state, const BatterySnapshot &battery) {
+    if (state == AppState::Boot ||
+        state == AppState::Sleep ||
+        state == AppState::Resetting) {
+        return false;
+    }
+
+    if (!battery.initialized ||
+        !battery.hasReading ||
+        !battery.readingAvailable ||
+        !battery.readingStable ||
+        battery.availability != BatteryAvailability::Available ||
+        !battery.low) {
+        return false;
+    }
+
+    return (millis() % kLowBatteryBlinkPeriodMs) < kLowBatteryBlinkOnMs;
+}
 
 } // namespace
 
@@ -37,7 +59,19 @@ void LedController::runTask() {
     uint8_t scanFrame = 0;
 
     while (true) {
-        switch (appStateStore().current()) {
+        const AppState state = appStateStore().current();
+        const BatterySnapshot battery = batteryService().snapshot();
+
+        if (shouldShowLowBatteryBlink(state, battery)) {
+            for (int i = 0; i < kLedCount; i++) {
+                ring_.setPixelColor(i, ring_.Color(180, 0, 0));
+            }
+            ring_.show();
+            vTaskDelay(pdMS_TO_TICKS(25));
+            continue;
+        }
+
+        switch (state) {
             case AppState::Boot: {
                 const bool on = (millis() / 250) % 2 == 0;
                 const uint32_t color = on ? ring_.Color(24, 18, 8) : ring_.Color(4, 2, 0);
