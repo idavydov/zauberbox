@@ -1,5 +1,7 @@
 #include "led_controller.h"
 
+#include <algorithm>
+
 #include "app_state.h"
 #include "battery_policy.h"
 #include "battery_service.h"
@@ -164,6 +166,9 @@ void LedController::runTask() {
                     const uint32_t phase = millis() % BatteryPolicy::kLowPowerPlayingCyclePeriodMs;
                     if (phase < BatteryPolicy::kLowPowerPlayingBreathStartMs) {
                         targetBrightness = 0.0f;
+                        const uint32_t remainingOffMs =
+                            BatteryPolicy::kLowPowerPlayingBreathStartMs - phase;
+                        currentDelay = static_cast<int>(std::min<uint32_t>(remainingOffMs, 400));
                     } else {
                         const float breathPhase =
                             (phase - BatteryPolicy::kLowPowerPlayingBreathStartMs) /
@@ -174,8 +179,8 @@ void LedController::runTask() {
                             constrain(breath * BatteryPolicy::kLowPowerPlayingBreathPeakBrightness,
                                       0.0f,
                                       255.0f);
+                        currentDelay = 60;
                     }
-                    currentDelay = 60;
                     useLowPowerRainbow = true;
                 }
 
@@ -191,15 +196,17 @@ void LedController::runTask() {
             }
             case AppState::Paused: {
                 if (shouldUseSparsePausedAnimation(battery)) {
-                    const bool on =
-                        (millis() % BatteryPolicy::kSparsePausedPulsePeriodMs) <
-                        BatteryPolicy::kSparsePausedPulseOnMs;
+                    const uint32_t phase = millis() % BatteryPolicy::kSparsePausedPulsePeriodMs;
+                    const bool on = phase < BatteryPolicy::kSparsePausedPulseOnMs;
                     const uint32_t color = on ? ring_.Color(0, 10, 12) : 0;
                     for (int i = 0; i < kLedCount; i++) {
                         ring_.setPixelColor(i, color);
                     }
                     ring_.show();
-                    vTaskDelay(pdMS_TO_TICKS(60));
+                    const uint32_t delayMs = on
+                        ? BatteryPolicy::kSparsePausedPulseOnMs - phase
+                        : std::min<uint32_t>(BatteryPolicy::kSparsePausedPulsePeriodMs - phase, 500);
+                    vTaskDelay(pdMS_TO_TICKS(delayMs));
                     break;
                 }
 
@@ -215,7 +222,7 @@ void LedController::runTask() {
             case AppState::Sleep: {
                 ring_.clear();
                 ring_.show();
-                vTaskDelay(pdMS_TO_TICKS(100));
+                vTaskDelay(pdMS_TO_TICKS(1000));
                 break;
             }
             case AppState::Resetting: {
