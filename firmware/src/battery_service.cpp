@@ -9,7 +9,7 @@ namespace {
 constexpr uint8_t kBatteryAdcPin = 6;
 constexpr float kBatteryDividerScale = 3.0F;
 constexpr float kBatteryMeasurementOffset = 0.990476F;
-constexpr uint32_t kSampleIntervalMs = 5000;
+constexpr uint32_t kSampleIntervalMs = 15000;
 constexpr uint32_t kSettlingSampleIntervalMs = 500;
 constexpr uint8_t kSamplesPerMeasurement = 4;
 constexpr uint8_t kBootstrapSamplesPerMeasurement = 12;
