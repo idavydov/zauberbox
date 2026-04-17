@@ -20,6 +20,7 @@ constexpr uint32_t kLowPowerPlayingBreathDurationMs = 2000;
 constexpr float kLowPowerPlayingBreathPeakBrightness = 40.0F;
 constexpr uint32_t kSparsePausedPulsePeriodMs = 3000;
 constexpr uint32_t kSparsePausedPulseOnMs = 140;
+constexpr uint32_t kLowBatteryPlaybackBeepIntervalMs = 60000;
 
 constexpr uint32_t kIdleSleepTimeoutMs = 10000;
 constexpr uint32_t kPausedSleepTimeoutMs = 300000;

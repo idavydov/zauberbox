@@ -18,6 +18,7 @@ bool audioInit();
 bool audioDisableOutputForCameraScan();
 bool audioQueueFile(AudioStorage storage, const char *path);
 bool audioStartFile(AudioStorage storage, const char *path);
+bool audioStartFileAtTime(AudioStorage storage, const char *path, uint32_t startTimeSeconds);
 bool audioStopPlayback();
 bool audioTogglePause();
 bool audioIsRunning();

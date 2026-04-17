@@ -13,6 +13,7 @@ enum class UiSound : uint8_t {
     Error,
     Sleep,
     Button,
+    LowBattery,
 };
 
 class MediaService {
@@ -22,6 +23,7 @@ class MediaService {
 
     bool playWifiConnectedSound();
     bool playUiSound(UiSound sound);
+    bool playTransientUiSoundOverAlbum(UiSound sound);
 
     bool playAlbum(const char *albumId);
     bool restartCurrentAlbum();
@@ -42,6 +44,8 @@ class MediaService {
     bool mountStorage();
     bool loadAlbumTracks(const char *albumId);
     bool startCurrentTrack();
+    bool startCurrentTrackAt(uint32_t startTimeSeconds);
+    void clearTransientUiSoundState();
     void handlePlaybackFinished(AudioPlaybackEvent event);
 
     static MediaService *activeInstance_;
@@ -53,4 +57,6 @@ class MediaService {
     bool storageReady_ = false;
     bool albumActive_ = false;
     bool paused_ = false;
+    bool transientUiSoundActive_ = false;
+    uint32_t transientUiSoundResumeAtSeconds_ = 0;
 };

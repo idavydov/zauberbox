@@ -82,6 +82,12 @@ def build_ui_sounds(output_dir: Path) -> None:
             (1300.0, 22, 0.03, 0),
         ]
     )
+    low_battery = _sequence(
+        [
+            (880.0, 55, 0.04, 60),
+            (740.0, 80, 0.045, 0),
+        ]
+    )
 
     files = {
         "scan_start.wav": scan_start,
@@ -89,6 +95,7 @@ def build_ui_sounds(output_dir: Path) -> None:
         "error.wav": error,
         "wifi_connected.wav": wifi_connected,
         "button.wav": button,
+        "low_battery.wav": low_battery,
     }
 
     for name, pcm in files.items():

@@ -31,6 +31,7 @@ class AppController {
     void handlePendingMutedUiSound();
     void handleMutedStateAudioOutput();
     void handlePendingQrAlbumStart();
+    void handleLowBatteryPlaybackWarning();
     void handleBatteryPowerPolicy();
     void handleSleepState();
     void handleButtonEvent(const ButtonEvent &event);
@@ -69,6 +70,7 @@ class AppController {
     uint32_t uiSoundMuteBlockUntilMs_ = 0;
     AppState lastObservedState_ = AppState::Boot;
     uint32_t policyStartedAtMs_ = 0;
+    uint32_t nextLowBatteryPlaybackBeepAtMs_ = 0;
     uint32_t idleEnteredAtMs_ = 0;
     uint32_t pausedEnteredAtMs_ = 0;
     SleepTrigger sleepTrigger_ = SleepTrigger::None;

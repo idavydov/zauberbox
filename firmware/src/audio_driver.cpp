@@ -40,6 +40,7 @@ enum class AudioCommandType : uint8_t {
 
 struct AudioPlaybackRequest {
     AudioStorage storage;
+    int32_t startTimeSeconds;
     char path[kMaxAudioPathLength];
 };
 
@@ -192,7 +193,7 @@ bool playRequest(const AudioPlaybackRequest &request) {
         Serial.printf("Audio file not found: %s\n", request.path);
         return false;
     }
-    if (!gFilePlayer.connecttoFS(*filesystem, request.path)) {
+    if (!gFilePlayer.connecttoFS(*filesystem, request.path, request.startTimeSeconds)) {
         Serial.printf("Audio playback start failed: %s\n", request.path);
         return false;
     }
@@ -223,12 +224,16 @@ void handleAudioInfo(Audio::msg_t msg) {
     handlePlaybackEvent(AudioPlaybackEvent::Finished);
 }
 
-void fillRequest(AudioPlaybackRequest *request, AudioStorage storage, const char *path) {
+void fillRequest(AudioPlaybackRequest *request,
+                 AudioStorage storage,
+                 const char *path,
+                 int32_t startTimeSeconds = -1) {
     if (!request) {
         return;
     }
 
     request->storage = storage;
+    request->startTimeSeconds = startTimeSeconds;
     request->path[0] = '\0';
     if (!path) {
         return;
@@ -375,6 +380,10 @@ bool audioQueueFile(AudioStorage storage, const char *path) {
 }
 
 bool audioStartFile(AudioStorage storage, const char *path) {
+    return audioStartFileAtTime(storage, path, static_cast<uint32_t>(-1));
+}
+
+bool audioStartFileAtTime(AudioStorage storage, const char *path, uint32_t startTimeSeconds) {
     if (!path || path[0] == '\0') {
         return false;
     }
@@ -386,7 +395,10 @@ bool audioStartFile(AudioStorage storage, const char *path) {
         .type = AudioCommandType::ReplaceQueue,
         .request = {},
     };
-    fillRequest(&command.request, storage, path);
+    const int32_t fileStartTime = startTimeSeconds == static_cast<uint32_t>(-1)
+        ? -1
+        : static_cast<int32_t>(startTimeSeconds);
+    fillRequest(&command.request, storage, path, fileStartTime);
     return queueCommand(command);
 }
 

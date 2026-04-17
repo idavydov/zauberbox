@@ -99,6 +99,7 @@ void AppController::update() {
     handleMutedStateAudioOutput();
     handlePendingQrAlbumStart();
     mediaService_.update();
+    handleLowBatteryPlaybackWarning();
     handleBatteryPowerPolicy();
     handleSleepState();
 }
@@ -489,6 +490,39 @@ void AppController::handlePendingQrAlbumStart() {
         resumeScanningAfterQrError_ = true;
         resumeScanningReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
     }
+}
+
+void AppController::handleLowBatteryPlaybackWarning() {
+    const AppState state = appStateStore().current();
+    if (state != AppState::Playing) {
+        nextLowBatteryPlaybackBeepAtMs_ = 0;
+        return;
+    }
+
+    const BatterySnapshot battery = batteryService().snapshot();
+    if (!canUseBatteryPolicy(battery) || !battery.low || battery.critical) {
+        nextLowBatteryPlaybackBeepAtMs_ = 0;
+        return;
+    }
+
+    if (nextLowBatteryPlaybackBeepAtMs_ == 0) {
+        nextLowBatteryPlaybackBeepAtMs_ = millis() + BatteryPolicy::kLowBatteryPlaybackBeepIntervalMs;
+        return;
+    }
+
+    if (static_cast<int32_t>(millis() - nextLowBatteryPlaybackBeepAtMs_) < 0) {
+        return;
+    }
+
+    if (!mediaService_.playTransientUiSoundOverAlbum(UiSound::LowBattery)) {
+        nextLowBatteryPlaybackBeepAtMs_ = millis() + 5000;
+        return;
+    }
+
+    Serial.printf("App controller: low-battery playback warning queued at %umV (%u%%).\n",
+                  battery.batteryMilliVolts,
+                  battery.percent);
+    nextLowBatteryPlaybackBeepAtMs_ = millis() + BatteryPolicy::kLowBatteryPlaybackBeepIntervalMs;
 }
 
 void AppController::handleBatteryPowerPolicy() {

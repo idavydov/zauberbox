@@ -18,6 +18,7 @@ constexpr char kWifiConnectedSoundPath[] = "/wifi_connected.wav";
 constexpr char kErrorSoundPath[] = "/error.wav";
 constexpr char kSleepSoundPath[] = "/sleep.wav";
 constexpr char kButtonSoundPath[] = "/button.wav";
+constexpr char kLowBatterySoundPath[] = "/low_battery.wav";
 constexpr char kSdMountPath[] = "/sdcard";
 constexpr uint32_t kPreviousTrackThresholdSeconds = 5;
 constexpr int kSdClkPin = 40;
@@ -67,12 +68,41 @@ bool MediaService::playUiSound(UiSound sound) {
     return audioQueueFile(AudioStorage::LittleFs, path);
 }
 
+bool MediaService::playTransientUiSoundOverAlbum(UiSound sound) {
+    if (!albumActive_ || paused_ || currentTrackIndex_ >= trackPaths_.size()) {
+        return false;
+    }
+    if (transientUiSoundActive_) {
+        return false;
+    }
+
+    const char *path = uiSoundPath(sound);
+    if (!path) {
+        return false;
+    }
+
+    transientUiSoundResumeAtSeconds_ = audioCurrentTimeSeconds();
+    transientUiSoundActive_ = true;
+    if (!audioStartFile(AudioStorage::LittleFs, path)) {
+        transientUiSoundActive_ = false;
+        transientUiSoundResumeAtSeconds_ = 0;
+        return false;
+    }
+
+    Serial.printf("Media service: transient UI sound %s over track %u at %us\n",
+                  path,
+                  static_cast<unsigned>(currentTrackIndex_ + 1),
+                  static_cast<unsigned>(transientUiSoundResumeAtSeconds_));
+    return true;
+}
+
 bool MediaService::playAlbum(const char *albumId) {
     if (!loadAlbumTracks(albumId)) {
         playUiSound(UiSound::Error);
         return false;
     }
 
+    clearTransientUiSoundState();
     currentTrackIndex_ = 0;
     albumActive_ = true;
     paused_ = false;
@@ -92,6 +122,7 @@ bool MediaService::restartCurrentAlbum() {
         return false;
     }
 
+    clearTransientUiSoundState();
     currentTrackIndex_ = 0;
     paused_ = false;
     if (!startCurrentTrack()) {
@@ -107,6 +138,7 @@ bool MediaService::nextTrack() {
         return false;
     }
 
+    clearTransientUiSoundState();
     currentTrackIndex_++;
     paused_ = false;
     if (!startCurrentTrack()) {
@@ -123,6 +155,7 @@ bool MediaService::previousTrackOrRestart() {
         return false;
     }
 
+    clearTransientUiSoundState();
     const uint32_t currentTime = audioCurrentTimeSeconds();
     if (currentTime < kPreviousTrackThresholdSeconds && currentTrackIndex_ > 0) {
         currentTrackIndex_--;
@@ -155,6 +188,7 @@ bool MediaService::stopAlbum() {
         return false;
     }
 
+    clearTransientUiSoundState();
     albumActive_ = false;
     paused_ = false;
     trackPaths_.clear();
@@ -202,6 +236,8 @@ const char *MediaService::uiSoundPath(UiSound sound) {
             return kSleepSoundPath;
         case UiSound::Button:
             return kButtonSoundPath;
+        case UiSound::LowBattery:
+            return kLowBatterySoundPath;
     }
 
     return nullptr;
@@ -309,25 +345,63 @@ bool MediaService::loadAlbumTracks(const char *albumId) {
 }
 
 bool MediaService::startCurrentTrack() {
+    return startCurrentTrackAt(static_cast<uint32_t>(-1));
+}
+
+bool MediaService::startCurrentTrackAt(uint32_t startTimeSeconds) {
     if (!albumActive_ || currentTrackIndex_ >= trackPaths_.size()) {
         return false;
     }
 
     const String &path = trackPaths_[currentTrackIndex_];
-    if (!audioStartFile(AudioStorage::SdCard, path.c_str())) {
+    const bool started = startTimeSeconds == static_cast<uint32_t>(-1)
+        ? audioStartFile(AudioStorage::SdCard, path.c_str())
+        : audioStartFileAtTime(AudioStorage::SdCard, path.c_str(), startTimeSeconds);
+    if (!started) {
         Serial.printf("Media service: failed to start track %s\n", path.c_str());
         return false;
     }
 
-    Serial.printf("Media service: playing album %s track %u/%u: %s\n",
-                  currentAlbumId_.c_str(),
-                  static_cast<unsigned>(currentTrackIndex_ + 1),
-                  static_cast<unsigned>(trackPaths_.size()),
-                  path.c_str());
+    if (startTimeSeconds == static_cast<uint32_t>(-1)) {
+        Serial.printf("Media service: playing album %s track %u/%u: %s\n",
+                      currentAlbumId_.c_str(),
+                      static_cast<unsigned>(currentTrackIndex_ + 1),
+                      static_cast<unsigned>(trackPaths_.size()),
+                      path.c_str());
+    } else {
+        Serial.printf("Media service: resuming album %s track %u/%u at %us: %s\n",
+                      currentAlbumId_.c_str(),
+                      static_cast<unsigned>(currentTrackIndex_ + 1),
+                      static_cast<unsigned>(trackPaths_.size()),
+                      static_cast<unsigned>(startTimeSeconds),
+                      path.c_str());
+    }
     return true;
 }
 
+void MediaService::clearTransientUiSoundState() {
+    transientUiSoundActive_ = false;
+    transientUiSoundResumeAtSeconds_ = 0;
+}
+
 void MediaService::handlePlaybackFinished(AudioPlaybackEvent event) {
+    if (transientUiSoundActive_) {
+        const uint32_t resumeAtSeconds = transientUiSoundResumeAtSeconds_;
+        transientUiSoundActive_ = false;
+        transientUiSoundResumeAtSeconds_ = 0;
+
+        if (startCurrentTrackAt(resumeAtSeconds)) {
+            return;
+        }
+        if (startCurrentTrack()) {
+            return;
+        }
+
+        Serial.printf("Media service: failed to resume track %u after transient UI sound\n",
+                      static_cast<unsigned>(currentTrackIndex_ + 1));
+        event = AudioPlaybackEvent::Failed;
+    }
+
     if (!albumActive_ || paused_) {
         return;
     }
