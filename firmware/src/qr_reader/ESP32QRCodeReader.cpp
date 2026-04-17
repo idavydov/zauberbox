@@ -5,6 +5,27 @@
 #include "Arduino.h"
 #include "../debug_log.h"
 
+namespace {
+
+constexpr uint32_t kQrStatsLogEveryFrames = 30;
+
+const char *frameSizeName(framesize_t frameSize)
+{
+  switch (frameSize)
+  {
+    case FRAMESIZE_QQVGA:
+      return "QQVGA";
+    case FRAMESIZE_QVGA:
+      return "QVGA";
+    case FRAMESIZE_VGA:
+      return "VGA";
+    default:
+      return "other";
+  }
+}
+
+} // namespace
+
 ESP32QRCodeReader::ESP32QRCodeReader() : ESP32QRCodeReader(CAMERA_MODEL_AI_THINKER, FRAMESIZE_QVGA)
 {
 }
@@ -109,6 +130,16 @@ void qrCodeDetectTask(void *taskData)
 
   uint16_t old_width = 0;
   uint16_t old_height = 0;
+  uint32_t frameCounter = 0;
+  uint32_t successfulDecodeCount = 0;
+  uint32_t decodeFailureCount = 0;
+  uint32_t noCodeFrameCount = 0;
+  uint64_t totalCaptureUs = 0;
+  uint64_t totalProcessUs = 0;
+
+  Serial.printf("ESP32QRCodeReader: decoder task started frameSize=%s throttle=%lums.\n",
+                frameSizeName(camera_config.frame_size),
+                0UL);
 
   if (self->debug)
   {
@@ -135,13 +166,9 @@ void qrCodeDetectTask(void *taskData)
       Serial.printf("uxHighWaterMark = %d\r\n", uxTaskGetStackHighWaterMark(NULL));
       Serial.print("begin camera get fb\r\n");
     }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    if (self->stopRequested)
-    {
-      break;
-    }
-
+    const uint32_t captureStartedAtUs = micros();
     fb = esp_camera_fb_get();
+    const uint32_t captureElapsedUs = micros() - captureStartedAtUs;
     if (!fb)
     {
       if (self->debug)
@@ -185,6 +212,7 @@ void qrCodeDetectTask(void *taskData)
       }
     }
 
+    const uint32_t processStartedAtUs = micros();
     // Serial.printf("quirc_begin\r\n");
     image = quirc_begin(q, NULL, NULL);
     if (self->debug)
@@ -201,6 +229,22 @@ void qrCodeDetectTask(void *taskData)
     int count = quirc_count(q);
     if (count == 0)
     {
+      frameCounter++;
+      noCodeFrameCount++;
+      totalCaptureUs += captureElapsedUs;
+      totalProcessUs += micros() - processStartedAtUs;
+      if ((frameCounter % kQrStatsLogEveryFrames) == 0)
+      {
+        Serial.printf("ESP32QRCodeReader: stats frames=%lu success=%lu decode_fail=%lu no_code=%lu avg_capture=%.1fms avg_process=%.1fms size=%ux%u.\n",
+                      static_cast<unsigned long>(frameCounter),
+                      static_cast<unsigned long>(successfulDecodeCount),
+                      static_cast<unsigned long>(decodeFailureCount),
+                      static_cast<unsigned long>(noCodeFrameCount),
+                      static_cast<double>(totalCaptureUs) / 1000.0 / frameCounter,
+                      static_cast<double>(totalProcessUs) / 1000.0 / frameCounter,
+                      old_width,
+                      old_height);
+      }
       if (self->debug)
       {
         Serial.printf("Error: not a valid qrcode\n");
@@ -224,6 +268,7 @@ void qrCodeDetectTask(void *taskData)
 
       if (err)
       {
+        decodeFailureCount++;
         const char *error = quirc_strerror(err);
         int len = strlen(error);
         if (self->debug)
@@ -240,6 +285,7 @@ void qrCodeDetectTask(void *taskData)
       }
       else
       {
+        successfulDecodeCount++;
         if (self->debug)
         {
           Serial.printf("Decoding successful:\n");
@@ -256,8 +302,23 @@ void qrCodeDetectTask(void *taskData)
         qrCodeData.payloadLen = data.payload_len;
       }
       xQueueSend(self->qrCodeQueue, &qrCodeData, (TickType_t)0);
+    }
 
-      Serial.println();
+    frameCounter++;
+    totalCaptureUs += captureElapsedUs;
+    totalProcessUs += micros() - processStartedAtUs;
+    if ((frameCounter % kQrStatsLogEveryFrames) == 0 || count > 0)
+    {
+      Serial.printf("ESP32QRCodeReader: stats frames=%lu success=%lu decode_fail=%lu no_code=%lu last_candidates=%d avg_capture=%.1fms avg_process=%.1fms size=%ux%u.\n",
+                    static_cast<unsigned long>(frameCounter),
+                    static_cast<unsigned long>(successfulDecodeCount),
+                    static_cast<unsigned long>(decodeFailureCount),
+                    static_cast<unsigned long>(noCodeFrameCount),
+                    count,
+                    static_cast<double>(totalCaptureUs) / 1000.0 / frameCounter,
+                    static_cast<double>(totalProcessUs) / 1000.0 / frameCounter,
+                    old_width,
+                    old_height);
     }
 
     //Serial.printf("finish recoginize\r\n");
@@ -272,6 +333,11 @@ void qrCodeDetectTask(void *taskData)
     fb = NULL;
   }
   quirc_destroy(q);
+  Serial.printf("ESP32QRCodeReader: decoder task stopped frames=%lu success=%lu decode_fail=%lu no_code=%lu.\n",
+                static_cast<unsigned long>(frameCounter),
+                static_cast<unsigned long>(successfulDecodeCount),
+                static_cast<unsigned long>(decodeFailureCount),
+                static_cast<unsigned long>(noCodeFrameCount));
   self->qrCodeTaskHandler = NULL;
   self->taskRunning = false;
   if (self->begunWithCaps)

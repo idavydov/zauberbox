@@ -31,6 +31,20 @@ constexpr uint32_t kCameraRetryDelayMs = 1000;
 constexpr BaseType_t kQrDecodeCore = 1;
 constexpr uint32_t kQrScanTimeoutMs = 180000;
 constexpr uint32_t kDuplicatePayloadWindowMs = 1500;
+constexpr framesize_t kQrFrameSize = FRAMESIZE_QVGA;
+
+const char *qrFrameSizeName(framesize_t frameSize) {
+    switch (frameSize) {
+        case FRAMESIZE_QQVGA:
+            return "QQVGA";
+        case FRAMESIZE_QVGA:
+            return "QVGA";
+        case FRAMESIZE_VGA:
+            return "VGA";
+        default:
+            return "other";
+    }
+}
 
 CameraPins makeCameraPins() {
     return {
@@ -75,9 +89,10 @@ camera_config_t makeDirectCameraConfig() {
     config.pin_reset = kCameraPinReset;
     config.xclk_freq_hz = 10000000;
     config.pixel_format = PIXFORMAT_GRAYSCALE;
-    config.frame_size = FRAMESIZE_QVGA;
+    config.frame_size = kQrFrameSize;
     config.jpeg_quality = 15;
-    config.fb_count = 1;
+    config.fb_count = 2;
+    config.grab_mode = CAMERA_GRAB_LATEST;
     return config;
 }
 
@@ -531,7 +546,7 @@ bool QrService::initCamera(bool startDecoderTask) {
         return true;
     }
 
-    reader_ = new ESP32QRCodeReader(makeCameraPins(), FRAMESIZE_QVGA);
+    reader_ = new ESP32QRCodeReader(makeCameraPins(), kQrFrameSize);
     reader_->cameraConfig = makeDirectCameraConfig();
 
     configureCameraRouting();
@@ -567,7 +582,9 @@ bool QrService::initCamera(bool startDecoderTask) {
             return false;
         }
     }
-    Serial.printf("QR service: OV5640 camera initialized (decoder=%d).\n", startDecoderTask);
+    Serial.printf("QR service: OV5640 camera initialized (decoder=%d, frameSize=%s).\n",
+                  startDecoderTask,
+                  qrFrameSizeName(kQrFrameSize));
     return true;
 }
 
