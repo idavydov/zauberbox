@@ -131,14 +131,20 @@ The firmware behavior should be modeled as explicit states.
 
 - Playback is paused but the current album and track position are retained.
 - Pressing play/pause again returns to `Playing`.
+- After the configured paused timeout, the device enters `Sleep`.
 - Long-pressing `KEY2` from this state returns to `QR Scan`.
 
 ### 7. Sleep
 
 - The device enters a low-power mode after the configured `Idle` timeout when
   Wi-Fi is disabled.
-- A sleep sound may be played on entry.
+- The device may also enter `Sleep` after the configured paused timeout.
+- If battery telemetry is stable and battery reaches the configured critical
+  threshold, the device enters `Sleep` immediately from `Idle`, `Playing`,
+  `Paused`, `QR Scan`, or `Debug Camera Preview`.
 - Wake-up behavior must be explicit in the implementation.
+- The current implementation uses deep sleep and wakes on the dedicated `BOOT`
+  button.
 - Waking from sleep returns to `QR Scan`.
 
 ## Buttons
@@ -178,14 +184,20 @@ separate audio path from normal file playback.
 
 - Scan-start chime: short sound played shortly after camera startup when
   entering `QR Scan` from boot.
-- Sleep sound: short sound played when entering `Sleep`.
 - Button sound: optional short confirmation sound for button presses.
 - Error sound: played for invalid QR codes, missing albums, or empty albums.
 - Wi-Fi connected sound: played when Wi-Fi connects successfully.
+- Low-battery warning sound: played during album playback when battery is low
+  but not yet critical.
 
 If a feedback sound conflicts with currently playing content, the implementation
 must define whether the sound is mixed, queued, or allowed to interrupt current
-playback. The current preferred behavior is a single queued playback path.
+playback.
+
+- The current implementation uses the normal queued playback path for most UI
+  sounds.
+- The low-battery warning sound is allowed to interrupt current album playback
+  and then resume the same track near the previous playback position.
 
 When transitioning from active scanning to QR error or album playback, the
 camera should be stopped before initializing audio for the next sound or media
@@ -207,10 +219,13 @@ Each main state should have a unique LED pattern.
 - `QR Scan`: rotational scanning animation distinct from portal mode (orange).
 - `Idle`: a lower-activity pattern distinct from active scanning.
 - `Playing`: rainbow rotation effect.
+- `Playing` with battery saver active: initial rainbow window, then a low-power
+  pattern with a long off interval and a short rainbow breathing interval.
+- `Paused` with battery saver active: sparse cyan pulse.
 - `Sleep`: LED off or a clearly reduced low-power pattern.
 - `Factory Reset`: red blinking pattern before reboot.
-
-Future battery-aware optimizations may change the playback LED pattern.
+- Low battery warning: brief red blink overlay distinct from normal state
+  animation.
 
 ## Wi-Fi and Web Interface
 
@@ -267,10 +282,40 @@ At minimum this includes:
 
 Factory reset should not erase media files from the microSD card.
 
-## Future Additions
+## Battery And Power
 
-- Built-in battery.
-- When running on battery, the rainbow playback effect is turned off.
-- When battery reaches 20%, the LED blinks red.
-- When battery reaches 10%, a low-battery warning sound is played every
-  20 seconds.
+- The device includes battery telemetry measured by ADC.
+- There is no reliable hardware signal that distinguishes external power from
+  battery power.
+- Battery policy is therefore based on stable battery voltage readings rather
+  than a true power-source signal.
+- Battery percentage is approximate and derived from a voltage curve; protection
+  behavior should be based on voltage thresholds, not percentage alone.
+- Battery telemetry should treat invalid near-zero readings as unavailable
+  rather than as a critically low battery state.
+- Battery telemetry should use a short measurement history and detect large
+  jumps so that plug/unplug transitions settle quickly.
+
+### Current Battery Policy
+
+- Low battery threshold: `3600 mV` with clear threshold `3675 mV`.
+- Critical battery threshold: `3450 mV` with clear threshold `3525 mV`.
+- Playback battery-saver threshold: below `90%` estimated charge.
+- Idle sleep timeout: `10 seconds` when Wi-Fi is disabled.
+- Paused sleep timeout: `5 minutes`.
+- Critical-battery sleep uses a short startup settle window before forcing
+  sleep again after boot or wake.
+
+### Current Battery-Aware Behavior
+
+- When battery is low and telemetry is stable, the LED ring briefly blinks red
+  every `4 seconds`.
+- During `Playing`, if battery is low but not critical, a low-battery warning
+  sound is played every `60 seconds`.
+- The low-battery warning sound is only used during `Playing`.
+- In battery-saver playback mode, normal rainbow playback remains visible for
+  the first `10 seconds` of playback.
+- After that initial window, playback LED behavior becomes low-power: `6
+  seconds` off followed by a `2 second` rainbow breathing interval.
+- When battery is critical, the device enters `Sleep` immediately instead of
+  trying to continue operation.
