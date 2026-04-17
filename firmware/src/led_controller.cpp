@@ -1,23 +1,13 @@
 #include "led_controller.h"
 
 #include "app_state.h"
+#include "battery_policy.h"
 #include "battery_service.h"
 
 namespace {
 
 constexpr uint8_t kLedPin = 38;
 constexpr uint16_t kLedCount = 7;
-constexpr uint32_t kLowBatteryBlinkPeriodMs = 4000;
-constexpr uint32_t kLowBatteryBlinkOnMs = 180;
-constexpr uint8_t kBatteryHighPercentThreshold = 90;
-constexpr uint32_t kPlayingRainbowWindowMs = 10000;
-constexpr uint32_t kLowPowerPlayingCyclePeriodMs = 8000;
-constexpr uint32_t kLowPowerPlayingBreathStartMs = 6000;
-constexpr uint32_t kLowPowerPlayingBreathDurationMs = 2000;
-constexpr float kLowPowerPlayingBreathPeakBrightness = 40.0F;
-constexpr uint32_t kSparsePausedPulsePeriodMs = 3000;
-constexpr uint32_t kSparsePausedPulseOnMs = 140;
-
 bool shouldShowLowBatteryBlink(AppState state, const BatterySnapshot &battery) {
     if (state == AppState::Boot ||
         state == AppState::Sleep ||
@@ -34,7 +24,8 @@ bool shouldShowLowBatteryBlink(AppState state, const BatterySnapshot &battery) {
         return false;
     }
 
-    return (millis() % kLowBatteryBlinkPeriodMs) < kLowBatteryBlinkOnMs;
+    return (millis() % BatteryPolicy::kLowBatteryBlinkPeriodMs) <
+           BatteryPolicy::kLowBatteryBlinkOnMs;
 }
 
 bool shouldLimitPlayingRainbow(const BatterySnapshot &battery) {
@@ -43,7 +34,7 @@ bool shouldLimitPlayingRainbow(const BatterySnapshot &battery) {
            battery.readingAvailable &&
            battery.readingStable &&
            battery.availability == BatteryAvailability::Available &&
-           battery.percent < kBatteryHighPercentThreshold;
+           battery.percent < BatteryPolicy::kPlaybackBatterySaverPercentThreshold;
 }
 
 bool shouldUseSparsePausedAnimation(const BatterySnapshot &battery) {
@@ -169,18 +160,20 @@ void LedController::runTask() {
 
                 if (shouldLimitPlayingRainbow(battery) &&
                     playingStartedAtMs != 0 &&
-                    (millis() - playingStartedAtMs >= kPlayingRainbowWindowMs)) {
-                    const uint32_t phase = millis() % kLowPowerPlayingCyclePeriodMs;
-                    if (phase < kLowPowerPlayingBreathStartMs) {
+                    (millis() - playingStartedAtMs >= BatteryPolicy::kPlayingRainbowWindowMs)) {
+                    const uint32_t phase = millis() % BatteryPolicy::kLowPowerPlayingCyclePeriodMs;
+                    if (phase < BatteryPolicy::kLowPowerPlayingBreathStartMs) {
                         targetBrightness = 0.0f;
                     } else {
                         const float breathPhase =
-                            (phase - kLowPowerPlayingBreathStartMs) /
-                            static_cast<float>(kLowPowerPlayingBreathDurationMs);
+                            (phase - BatteryPolicy::kLowPowerPlayingBreathStartMs) /
+                            static_cast<float>(BatteryPolicy::kLowPowerPlayingBreathDurationMs);
                         const float wave = sin(breathPhase * PI);
                         const float breath = wave * wave;
                         targetBrightness =
-                            constrain(breath * kLowPowerPlayingBreathPeakBrightness, 0.0f, 255.0f);
+                            constrain(breath * BatteryPolicy::kLowPowerPlayingBreathPeakBrightness,
+                                      0.0f,
+                                      255.0f);
                     }
                     currentDelay = 60;
                     useLowPowerRainbow = true;
@@ -198,7 +191,9 @@ void LedController::runTask() {
             }
             case AppState::Paused: {
                 if (shouldUseSparsePausedAnimation(battery)) {
-                    const bool on = (millis() % kSparsePausedPulsePeriodMs) < kSparsePausedPulseOnMs;
+                    const bool on =
+                        (millis() % BatteryPolicy::kSparsePausedPulsePeriodMs) <
+                        BatteryPolicy::kSparsePausedPulseOnMs;
                     const uint32_t color = on ? ring_.Color(0, 10, 12) : 0;
                     for (int i = 0; i < kLedCount; i++) {
                         ring_.setPixelColor(i, color);

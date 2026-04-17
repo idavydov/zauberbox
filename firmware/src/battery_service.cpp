@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "battery_policy.h"
 #include "debug_log.h"
 
 namespace {
@@ -18,12 +19,6 @@ constexpr uint8_t kBootstrapUsableSamples =
     kBootstrapSamplesPerMeasurement - kBootstrapDiscardInitialSamples;
 constexpr uint8_t kMeasurementHistorySize = 4;
 constexpr uint16_t kInvalidSampleFloorMv = 100;
-constexpr uint16_t kJumpThresholdMv = 150;
-constexpr uint16_t kLowThresholdMv = 3600;
-constexpr uint16_t kLowClearThresholdMv = 3675;
-constexpr uint16_t kCriticalThresholdMv = 3450;
-constexpr uint16_t kCriticalClearThresholdMv = 3525;
-
 constexpr uint16_t kPercentCurveMv[] = {
     3300,
     3450,
@@ -200,7 +195,7 @@ void BatteryService::takeMeasurement() {
     const uint16_t previousAverageBatteryMilliVolts = currentAverageBatteryMilliVolts();
     if (measurementHistoryCount_ == kMeasurementHistorySize &&
         abs(static_cast<int>(measuredBatteryMilliVolts) -
-            static_cast<int>(previousAverageBatteryMilliVolts)) >= kJumpThresholdMv) {
+            static_cast<int>(previousAverageBatteryMilliVolts)) >= BatteryPolicy::kJumpThresholdMv) {
         Serial.printf("Battery service: measurement jump detected, resetting history (%umV -> %umV).\n",
                       previousAverageBatteryMilliVolts,
                       measuredBatteryMilliVolts);
@@ -233,15 +228,17 @@ void BatteryService::takeMeasurement() {
 
     if (readingStable) {
         nextSnapshot.low = previousSnapshot.low
-            ? batteryMilliVolts <= kLowClearThresholdMv
-            : batteryMilliVolts <= kLowThresholdMv;
+            ? batteryMilliVolts <= BatteryPolicy::kLowClearThresholdMv
+            : batteryMilliVolts <= BatteryPolicy::kLowThresholdMv;
         nextSnapshot.critical = previousSnapshot.critical
-            ? batteryMilliVolts <= kCriticalClearThresholdMv
-            : batteryMilliVolts <= kCriticalThresholdMv;
-        if (previousSnapshot.low && batteryMilliVolts > kLowClearThresholdMv) {
+            ? batteryMilliVolts <= BatteryPolicy::kCriticalClearThresholdMv
+            : batteryMilliVolts <= BatteryPolicy::kCriticalThresholdMv;
+        if (previousSnapshot.low &&
+            batteryMilliVolts > BatteryPolicy::kLowClearThresholdMv) {
             nextSnapshot.low = false;
         }
-        if (previousSnapshot.critical && batteryMilliVolts > kCriticalClearThresholdMv) {
+        if (previousSnapshot.critical &&
+            batteryMilliVolts > BatteryPolicy::kCriticalClearThresholdMv) {
             nextSnapshot.critical = false;
         }
     } else {

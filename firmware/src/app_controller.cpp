@@ -6,6 +6,7 @@
 
 #include "app_state.h"
 #include "audio_driver.h"
+#include "battery_policy.h"
 #include "battery_service.h"
 #include "config_service.h"
 #include "debug_log.h"
@@ -19,8 +20,6 @@ constexpr uint32_t kQrErrorResumeDelayMs = 250;
 constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
 constexpr uint32_t kScanStartPlaybackStartFallbackMs = 3000;
 constexpr uint32_t kWifiPortalResumeFallbackMs = 5000;
-constexpr uint32_t kIdleSleepTimeoutMs = 10000;
-constexpr uint32_t kPausedSleepTimeoutMs = 300000;
 constexpr uint32_t kBootWakeButtonSuppressionMs = 1500;
 constexpr char kWifiMdnsHostname[] = "zauberbox";
 
@@ -42,6 +41,7 @@ const char *sleepTriggerName(AppController::SleepTrigger trigger) {
 } // namespace
 
 void AppController::begin() {
+    policyStartedAtMs_ = millis();
     const esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
     if (wakeupCause != ESP_SLEEP_WAKEUP_UNDEFINED) {
         Serial.printf("App controller: wakeup cause=%d\n", static_cast<int>(wakeupCause));
@@ -513,6 +513,9 @@ void AppController::handleBatteryPowerPolicy() {
     }
 
     if (shouldEnterCriticalBatterySleep(battery, state)) {
+        if (millis() - policyStartedAtMs_ < BatteryPolicy::kCriticalSleepSettleMs) {
+            return;
+        }
         requestSleep(SleepTrigger::CriticalBattery, &battery);
         return;
     }
@@ -521,7 +524,7 @@ void AppController::handleBatteryPowerPolicy() {
         if (pausedEnteredAtMs_ == 0) {
             pausedEnteredAtMs_ = millis();
         }
-        if (millis() - pausedEnteredAtMs_ >= kPausedSleepTimeoutMs) {
+        if (millis() - pausedEnteredAtMs_ >= BatteryPolicy::kPausedSleepTimeoutMs) {
             requestSleep(SleepTrigger::PausedTimeout, &battery);
         }
         return;
@@ -537,7 +540,7 @@ void AppController::handleBatteryPowerPolicy() {
         idleEnteredAtMs_ = millis();
     }
 
-    if (millis() - idleEnteredAtMs_ < kIdleSleepTimeoutMs) {
+    if (millis() - idleEnteredAtMs_ < BatteryPolicy::kIdleSleepTimeoutMs) {
         return;
     }
 
@@ -578,6 +581,8 @@ bool AppController::shouldEnterCriticalBatterySleep(const BatterySnapshot &batte
     }
 
     return state == AppState::Idle ||
+           state == AppState::Playing ||
+           state == AppState::Paused ||
            state == AppState::QrScan ||
            state == AppState::DebugCameraPreview;
 }
