@@ -975,8 +975,6 @@ void WebServerService::handleStatus() {
     batteryObject["percent"] = battery.percent;
     batteryObject["is_low"] = battery.low;
     batteryObject["is_critical"] = battery.critical;
-    batteryObject["power_source"] = BatteryService::powerSourceName(battery.powerSource);
-    batteryObject["power_source_known"] = battery.powerSource != BatteryPowerSource::Unknown;
     batteryObject["updated_at_ms"] = battery.updatedAtMs;
 
     String body;

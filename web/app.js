@@ -397,11 +397,6 @@ function batterySummaryText() {
         `${battery.percent}%`,
         formatBatteryVoltage(battery.voltage_mv)
     ];
-    if (battery.power_source_known) {
-        parts.push(battery.power_source === 'battery' ? 'On battery' : 'External power');
-    } else {
-        parts.push('Power source unknown');
-    }
     return parts.join(' · ');
 }
 

@@ -131,8 +131,6 @@ def status():
             "percent": 84,
             "is_low": False,
             "is_critical": False,
-            "power_source": "unknown",
-            "power_source_known": False,
             "updated_at_ms": 18420,
         }
     })

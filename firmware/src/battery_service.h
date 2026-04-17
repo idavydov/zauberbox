@@ -25,6 +25,8 @@ struct BatterySnapshot {
     uint8_t percent = 0;
     bool low = false;
     bool critical = false;
+    // Placeholder for future hardware support. This board currently has no
+    // reliable digital signal for external-vs-battery power detection.
     BatteryPowerSource powerSource = BatteryPowerSource::Unknown;
     BatteryAvailability availability = BatteryAvailability::Unknown;
     uint32_t updatedAtMs = 0;
