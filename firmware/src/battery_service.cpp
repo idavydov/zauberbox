@@ -121,6 +121,7 @@ void BatteryService::begin() {
     snapshot_ = {};
     snapshot_.initialized = true;
     snapshot_.availability = BatteryAvailability::Unknown;
+    debugOverride_ = {};
     portEXIT_CRITICAL(&mux_);
 
     Serial.printf("Battery service: initialized on ADC pin %u.\n", kBatteryAdcPin);
@@ -137,10 +138,67 @@ void BatteryService::update() {
 
 BatterySnapshot BatteryService::snapshot() const {
     BatterySnapshot snapshot;
+    BatteryDebugOverrideStatus debugOverride;
     portENTER_CRITICAL(&mux_);
     snapshot = snapshot_;
+    debugOverride = debugOverride_;
     portEXIT_CRITICAL(&mux_);
+
+    if (!debugOverride.enabled) {
+        return snapshot;
+    }
+
+    const uint32_t now = millis();
+    debugOverride.active = now >= debugOverride.activateAtMs;
+    if (!debugOverride.active) {
+        return snapshot;
+    }
+
+    snapshot.initialized = true;
+    snapshot.hasReading = true;
+    snapshot.readingAvailable = true;
+    snapshot.readingStable = true;
+    snapshot.batteryMilliVolts = debugOverride.targetBatteryMilliVolts;
+    snapshot.percent = estimatePercent(debugOverride.targetBatteryMilliVolts);
+    snapshot.availability = BatteryAvailability::Available;
+    snapshot.updatedAtMs = now;
+    applyDerivedState(&snapshot, debugOverride.targetBatteryMilliVolts);
     return snapshot;
+}
+
+void BatteryService::setDebugVoltageOverride(uint16_t targetBatteryMilliVolts, uint32_t delayMs) {
+    const uint32_t activateAtMs = millis() + delayMs;
+    portENTER_CRITICAL(&mux_);
+    debugOverride_.enabled = true;
+    debugOverride_.active = false;
+    debugOverride_.targetBatteryMilliVolts = targetBatteryMilliVolts;
+    debugOverride_.activateAtMs = activateAtMs;
+    portEXIT_CRITICAL(&mux_);
+
+    Serial.printf("Battery service: debug override scheduled to %umV in %ums.\n",
+                  targetBatteryMilliVolts,
+                  delayMs);
+}
+
+void BatteryService::clearDebugVoltageOverride() {
+    BatteryDebugOverrideStatus previous;
+    portENTER_CRITICAL(&mux_);
+    previous = debugOverride_;
+    debugOverride_ = {};
+    portEXIT_CRITICAL(&mux_);
+
+    if (previous.enabled) {
+        Serial.println("Battery service: debug override cleared.");
+    }
+}
+
+BatteryDebugOverrideStatus BatteryService::debugVoltageOverrideStatus() const {
+    BatteryDebugOverrideStatus status;
+    portENTER_CRITICAL(&mux_);
+    status = debugOverride_;
+    portEXIT_CRITICAL(&mux_);
+    status.active = status.enabled && millis() >= status.activateAtMs;
+    return status;
 }
 
 const char *BatteryService::powerSourceName(BatteryPowerSource source) {
@@ -342,6 +400,15 @@ uint8_t BatteryService::estimatePercent(uint16_t batteryMilliVolts) {
     }
 
     return 0;
+}
+
+void BatteryService::applyDerivedState(BatterySnapshot *snapshot, uint16_t batteryMilliVolts) {
+    if (!snapshot) {
+        return;
+    }
+
+    snapshot->low = batteryMilliVolts <= BatteryPolicy::kLowThresholdMv;
+    snapshot->critical = batteryMilliVolts <= BatteryPolicy::kCriticalThresholdMv;
 }
 
 BatteryService &batteryService() {

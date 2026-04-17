@@ -418,6 +418,28 @@ body {
     font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
     text-shadow: none;
 }
+.debug-battery-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 1rem 0;
+}
+.debug-battery-actions button {
+    margin: 0;
+}
+.debug-battery-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.9rem;
+    margin-top: 1rem;
+    align-items: end;
+}
+.debug-battery-form label {
+    margin-bottom: 0;
+}
+.debug-battery-form button {
+    margin-bottom: 0;
+}
 
 /* Drag & Drop Overlay */
 .upload-item.drag-over::after {

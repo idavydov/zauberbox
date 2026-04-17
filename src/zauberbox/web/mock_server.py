@@ -9,6 +9,11 @@ app = Flask(__name__)
 
 # Server start time for dynamic logs
 START_TIME = time.time()
+DEBUG_BATTERY_OVERRIDE = {
+    "enabled": False,
+    "target_mv": 0,
+    "activate_at": 0.0,
+}
 
 # Configurable storage directory
 STORAGE_DIR = "mock_sd"
@@ -114,8 +119,48 @@ def debug_logs():
 
     return app.response_class(body, mimetype='text/plain')
 
+@app.route('/api/debug/battery-override', methods=['POST'])
+def debug_battery_override_set():
+    data = request.get_json(silent=True) or {}
+    target_mv = int(data.get('voltage_mv', 0))
+    delay_ms = int(data.get('delay_ms', 0))
+    if target_mv < 3000 or target_mv > 4500:
+        return jsonify({"success": False, "error": "voltage_mv must be between 3000 and 4500"}), 400
+    if delay_ms < 0 or delay_ms > 600000:
+        return jsonify({"success": False, "error": "delay_ms must be between 0 and 600000"}), 400
+
+    DEBUG_BATTERY_OVERRIDE["enabled"] = True
+    DEBUG_BATTERY_OVERRIDE["target_mv"] = target_mv
+    DEBUG_BATTERY_OVERRIDE["activate_at"] = time.time() + (delay_ms / 1000.0)
+    return jsonify({"success": True})
+
+@app.route('/api/debug/battery-override', methods=['DELETE'])
+def debug_battery_override_clear():
+    DEBUG_BATTERY_OVERRIDE["enabled"] = False
+    DEBUG_BATTERY_OVERRIDE["target_mv"] = 0
+    DEBUG_BATTERY_OVERRIDE["activate_at"] = 0.0
+    return jsonify({"success": True})
+
 @app.route('/api/status')
 def status():
+    now = time.time()
+    override_enabled = DEBUG_BATTERY_OVERRIDE["enabled"]
+    override_active = override_enabled and now >= DEBUG_BATTERY_OVERRIDE["activate_at"]
+    voltage_mv = DEBUG_BATTERY_OVERRIDE["target_mv"] if override_active else 3992
+    percent = 84
+    is_low = False
+    is_critical = False
+
+    if override_active:
+        if voltage_mv <= 3300:
+            percent = 0
+        elif voltage_mv >= 4200:
+            percent = 100
+        else:
+            percent = round((voltage_mv - 3300) * 100 / (4200 - 3300))
+        is_low = voltage_mv <= 3600
+        is_critical = voltage_mv <= 3450
+
     return jsonify({
         "app_state": "QrScan",
         "wifi_mode": "Connected",
@@ -126,12 +171,20 @@ def status():
             "reading_stable": True,
             "availability": "available",
             "adc_mv": 1318,
-            "voltage_mv": 3992,
-            "voltage_v": 3.992,
-            "percent": 84,
-            "is_low": False,
-            "is_critical": False,
+            "voltage_mv": voltage_mv,
+            "voltage_v": voltage_mv / 1000.0,
+            "percent": percent,
+            "is_low": is_low,
+            "is_critical": is_critical,
             "updated_at_ms": 18420,
+            "debug_override": {
+                "enabled": override_enabled,
+                "active": override_active,
+                "target_mv": DEBUG_BATTERY_OVERRIDE["target_mv"] if override_enabled else 0,
+                "target_v": (DEBUG_BATTERY_OVERRIDE["target_mv"] / 1000.0) if override_enabled else 0.0,
+                "activate_at_ms": int((DEBUG_BATTERY_OVERRIDE["activate_at"] - START_TIME) * 1000) if override_enabled else 0,
+                "activate_in_ms": max(0, int((DEBUG_BATTERY_OVERRIDE["activate_at"] - now) * 1000)) if override_enabled and not override_active else 0,
+            }
         }
     })
 

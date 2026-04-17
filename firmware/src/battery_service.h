@@ -32,23 +32,35 @@ struct BatterySnapshot {
     uint32_t updatedAtMs = 0;
 };
 
+struct BatteryDebugOverrideStatus {
+    bool enabled = false;
+    bool active = false;
+    uint16_t targetBatteryMilliVolts = 0;
+    uint32_t activateAtMs = 0;
+};
+
 class BatteryService {
   public:
     void begin();
     void update();
     BatterySnapshot snapshot() const;
+    void setDebugVoltageOverride(uint16_t targetBatteryMilliVolts, uint32_t delayMs);
+    void clearDebugVoltageOverride();
+    BatteryDebugOverrideStatus debugVoltageOverrideStatus() const;
     static const char *powerSourceName(BatteryPowerSource source);
     static const char *availabilityName(BatteryAvailability availability);
 
   private:
     void takeMeasurement();
     static uint8_t estimatePercent(uint16_t batteryMilliVolts);
+    static void applyDerivedState(BatterySnapshot *snapshot, uint16_t batteryMilliVolts);
     uint16_t currentAverageBatteryMilliVolts() const;
     void clearMeasurementHistory();
     void pushBatteryMeasurement(uint16_t batteryMilliVolts);
 
     mutable portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
     BatterySnapshot snapshot_ = {};
+    BatteryDebugOverrideStatus debugOverride_ = {};
     uint16_t measurementHistory_[4] = {};
     uint8_t measurementHistoryCount_ = 0;
     uint8_t measurementHistoryIndex_ = 0;

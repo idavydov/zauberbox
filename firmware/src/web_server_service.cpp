@@ -233,6 +233,12 @@ void WebServerService::registerRoutes() {
     server_.on("/api/debug/logs", HTTP_GET, [this]() {
         handleDebugLogs();
     });
+    server_.on("/api/debug/battery-override", HTTP_POST, [this]() {
+        handleDebugBatteryOverride();
+    });
+    server_.on("/api/debug/battery-override", HTTP_DELETE, [this]() {
+        handleDebugBatteryOverride();
+    });
 }
 
 bool WebServerService::ensureAuthorized() {
@@ -952,6 +958,40 @@ void WebServerService::handleDebugLogs() {
     server_.send(200, "text/plain; charset=utf-8", body);
 }
 
+void WebServerService::handleDebugBatteryOverride() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    if (server_.method() == HTTP_DELETE) {
+        batteryService().clearDebugVoltageOverride();
+        server_.send(200, "application/json", "{\"success\":true}");
+        return;
+    }
+
+    StaticJsonDocument<256> doc;
+    const DeserializationError error = deserializeJson(doc, server_.arg("plain"));
+    if (error) {
+        sendJsonError(400, "Invalid JSON body");
+        return;
+    }
+
+    const long targetBatteryMilliVolts = doc["voltage_mv"] | 0;
+    const long delayMs = doc["delay_ms"] | 0;
+    if (targetBatteryMilliVolts < 3000 || targetBatteryMilliVolts > 4500) {
+        sendJsonError(400, "voltage_mv must be between 3000 and 4500");
+        return;
+    }
+    if (delayMs < 0 || delayMs > 600000) {
+        sendJsonError(400, "delay_ms must be between 0 and 600000");
+        return;
+    }
+
+    batteryService().setDebugVoltageOverride(static_cast<uint16_t>(targetBatteryMilliVolts),
+                                             static_cast<uint32_t>(delayMs));
+    server_.send(200, "application/json", "{\"success\":true}");
+}
+
 void WebServerService::handleStatus() {
     if (!ensureAuthorized()) {
         return;
@@ -959,8 +999,10 @@ void WebServerService::handleStatus() {
 
     const AppRuntimeSnapshot runtime = appStateStore().snapshot();
     const BatterySnapshot battery = batteryService().snapshot();
+    const BatteryDebugOverrideStatus debugOverride = batteryService().debugVoltageOverrideStatus();
+    const uint32_t now = millis();
 
-    StaticJsonDocument<384> response;
+    StaticJsonDocument<640> response;
     response["app_state"] = AppStateStore::stateName(runtime.appState);
     response["wifi_mode"] = AppStateStore::wifiModeName(runtime.wifiMode);
 
@@ -978,6 +1020,18 @@ void WebServerService::handleStatus() {
     batteryObject["is_low"] = battery.low;
     batteryObject["is_critical"] = battery.critical;
     batteryObject["updated_at_ms"] = battery.updatedAtMs;
+    JsonObject debugOverrideObject = batteryObject.createNestedObject("debug_override");
+    debugOverrideObject["enabled"] = debugOverride.enabled;
+    debugOverrideObject["active"] = debugOverride.active;
+    debugOverrideObject["target_mv"] = debugOverride.targetBatteryMilliVolts;
+    debugOverrideObject["target_v"] = debugOverride.targetBatteryMilliVolts > 0
+        ? static_cast<float>(debugOverride.targetBatteryMilliVolts) / 1000.0F
+        : 0.0F;
+    debugOverrideObject["activate_at_ms"] = debugOverride.activateAtMs;
+    debugOverrideObject["activate_in_ms"] =
+        debugOverride.enabled && now < debugOverride.activateAtMs
+            ? (debugOverride.activateAtMs - now)
+            : 0;
 
     String body;
     serializeJson(response, body);

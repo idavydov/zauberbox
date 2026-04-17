@@ -25,6 +25,7 @@ let state = {
     debugLogsLoading: false,
     debugLogsError: '',
     debugLogsUpdatedAt: 0,
+    debugBatteryError: '',
     selectionMode: false,
     selectedDirs: new Set(),
     error: null
@@ -304,13 +305,16 @@ function scheduleDeviceStatusRefresh(delayMs = 15000) {
     if (state.loading || state.error) {
         return;
     }
+    const effectiveDelayMs = state.view === 'debug-battery'
+        ? Math.min(delayMs, 1000)
+        : delayMs;
     if (deviceStatusTimerId) {
         window.clearTimeout(deviceStatusTimerId);
     }
     deviceStatusTimerId = window.setTimeout(() => {
         deviceStatusTimerId = 0;
         refreshDeviceStatus();
-    }, delayMs);
+    }, effectiveDelayMs);
 }
 
 async function refreshDeviceStatus() {
@@ -382,6 +386,7 @@ function leaveDebugView() {
     state.debugLogsLoading = false;
     state.debugLogsError = '';
     state.debugLogsUpdatedAt = 0;
+    state.debugBatteryError = '';
 }
 
 function formatDebugTimestamp(timestamp) {
@@ -440,6 +445,78 @@ function batteryStateClass() {
         return 'settling';
     }
     return '';
+}
+
+function debugBatteryOverrideStatusText() {
+    const override = state.deviceStatus?.battery?.debug_override;
+    if (!override?.enabled) {
+        return 'No fake battery override is armed.';
+    }
+    if (override.active) {
+        return `Fake battery active at ${formatBatteryVoltage(override.target_mv)}.`;
+    }
+    const delaySeconds = Math.max(0, Math.ceil((override.activate_in_ms || 0) / 1000));
+    return `Fake battery armed: ${formatBatteryVoltage(override.target_mv)} in ${delaySeconds}s.`;
+}
+
+async function setDebugBatteryOverride(voltageMv, delayMs = 10000) {
+    state.debugBatteryError = '';
+    render();
+    try {
+        await fetchAPI('/debug/battery-override', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                voltage_mv: voltageMv,
+                delay_ms: delayMs
+            })
+        });
+        await refreshDeviceStatus();
+    } catch (err) {
+        state.debugBatteryError = err.message || 'Failed to arm fake battery voltage.';
+        render();
+    }
+}
+
+async function clearDebugBatteryOverride() {
+    state.debugBatteryError = '';
+    render();
+    try {
+        await fetch(`${API_BASE}/debug/battery-override`, {
+            method: 'DELETE'
+        }).then(async response => {
+            if (!response.ok) {
+                const errData = await response.json().catch(() => null);
+                throw new Error(errData?.error || `Request failed (${response.status})`);
+            }
+        });
+        await refreshDeviceStatus();
+    } catch (err) {
+        state.debugBatteryError = err.message || 'Failed to clear fake battery voltage.';
+        render();
+    }
+}
+
+function applyDebugBatteryPreset(voltageMv) {
+    setDebugBatteryOverride(voltageMv, 10000);
+}
+
+function applyCustomDebugBatteryOverride(event) {
+    event.preventDefault();
+    const voltageInput = document.getElementById('debug-battery-voltage');
+    const delayInput = document.getElementById('debug-battery-delay');
+    const voltageValue = Number.parseFloat(voltageInput?.value || '');
+    const delaySeconds = Number.parseFloat(delayInput?.value || '');
+    if (!Number.isFinite(voltageValue) || !Number.isFinite(delaySeconds)) {
+        state.debugBatteryError = 'Enter a valid voltage and delay.';
+        render();
+        return false;
+    }
+
+    const voltageMv = Math.round(voltageValue * 1000);
+    const delayMs = Math.max(0, Math.round(delaySeconds * 1000));
+    setDebugBatteryOverride(voltageMv, delayMs);
+    return false;
 }
 
 async function refreshDebugPreview() {
@@ -620,8 +697,27 @@ function openDebugLogs(push = true) {
     refreshDebugLogs();
 }
 
+function openDebugBattery(push = true) {
+    if (push) {
+        const currentHash = window.location.hash || '#/';
+        if (!currentHash.startsWith('#/debug') && !currentHash.startsWith('#/software')) {
+            debugReturnHash = currentHash;
+        }
+        window.location.hash = '/debug/battery';
+        return;
+    }
+
+    stopDebugPreview({ clearImage: true, stopSession: true });
+    stopDebugLogs();
+    state.view = 'debug-battery';
+    state.loading = false;
+    state.debugBatteryError = '';
+    render();
+    refreshDeviceStatus();
+}
+
 function leaveDebugMenu() {
-    if (state.view === 'debug-camera' || state.view === 'debug-logs') {
+    if (state.view === 'debug-camera' || state.view === 'debug-logs' || state.view === 'debug-battery') {
         window.location.hash = '/debug';
         return;
     }
@@ -639,6 +735,8 @@ async function navigate() {
         await openDebugCamera(false);
     } else if (hash === '#/debug/logs') {
         openDebugLogs(false);
+    } else if (hash === '#/debug/battery') {
+        openDebugBattery(false);
     } else if (hash === '#/debug') {
         openDebug(false);
     } else if (hash === '#/software') {
@@ -1290,6 +1388,10 @@ function render() {
                     <strong>Logs</strong>
                     <p>View recent firmware log output captured on the device.</p>
                 </article>
+                <article class="debug-menu-card" onclick="openDebugBattery()">
+                    <strong>Battery Test</strong>
+                    <p>Arm a delayed fake battery voltage in RAM to test sleep and warning behavior.</p>
+                </article>
             </section>
         `;
     } else if (state.view === 'debug-camera') {
@@ -1383,6 +1485,50 @@ function render() {
             const shell = app.querySelector('.debug-log-shell');
             if (shell) shell.scrollTop = shell.scrollHeight;
         }
+    } else if (state.view === 'debug-battery') {
+        navLeft.innerHTML = `
+            <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
+            <li><strong>Battery Test</strong></li>
+        `;
+        navRight.innerHTML = ``;
+
+        const battery = state.deviceStatus?.battery;
+        const override = battery?.debug_override;
+        const batteryText = batterySummaryText();
+        const overrideText = debugBatteryOverrideStatusText();
+
+        app.innerHTML = `
+            <section class="debug-grid">
+                <article class="debug-card">
+                    <header class="debug-card-header">
+                        <div>
+                            <strong>Battery Test</strong>
+                            <p>Schedules a RAM-only fake battery voltage. It is applied after a delay and disappears on reboot.</p>
+                        </div>
+                    </header>
+                    ${state.debugBatteryError ? `<p class="debug-status error">${escapeHtml(state.debugBatteryError)}</p>` : ''}
+                    <p class="debug-status">${escapeHtml(batteryText)}</p>
+                    <p class="debug-status">${escapeHtml(overrideText)}</p>
+                    ${override?.active ? `<small>Effective battery is currently overridden. Sleep, LED, and warning logic use the fake voltage.</small>` : `<small>Use a delay so you can start playback or enter the state you want to test first.</small>`}
+                    <div class="debug-battery-actions">
+                        <button class="secondary" type="button" onclick="applyDebugBatteryPreset(3600)">3.60V in 10s</button>
+                        <button class="secondary" type="button" onclick="applyDebugBatteryPreset(3450)">3.45V in 10s</button>
+                        <button class="contrast outline" type="button" onclick="clearDebugBatteryOverride()">Clear Override</button>
+                    </div>
+                    <form class="debug-battery-form" onsubmit="return applyCustomDebugBatteryOverride(event)">
+                        <label>
+                            Voltage (V)
+                            <input id="debug-battery-voltage" type="number" min="3.0" max="4.5" step="0.01" value="${override?.enabled ? ((override.target_mv || 0) / 1000).toFixed(2) : '3.45'}">
+                        </label>
+                        <label>
+                            Delay (s)
+                            <input id="debug-battery-delay" type="number" min="0" max="600" step="1" value="${override?.enabled && !override.active ? Math.max(0, Math.ceil((override.activate_in_ms || 0) / 1000)) : 10}">
+                        </label>
+                        <button type="submit">Arm Custom Voltage</button>
+                    </form>
+                </article>
+            </section>
+        `;
     } else {
         const uploadState = state.upload;
         const uploadInProgress = Boolean(uploadState);

@@ -46,6 +46,7 @@ class WebServerService {
     void handleDebugCameraPreviewStop();
     void handleDebugCameraFrame();
     void handleDebugLogs();
+    void handleDebugBatteryOverride();
     void handleStatus();
 
     WebServer server_{80};
