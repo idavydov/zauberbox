@@ -19,6 +19,7 @@ constexpr char kErrorSoundPath[] = "/error.wav";
 constexpr char kSleepSoundPath[] = "/sleep.wav";
 constexpr char kButtonSoundPath[] = "/button.wav";
 constexpr char kLowBatterySoundPath[] = "/low_battery.wav";
+constexpr uint32_t kTransientUiResumeDelayMs = 350;
 constexpr char kSdMountPath[] = "/sdcard";
 constexpr uint32_t kPreviousTrackThresholdSeconds = 5;
 constexpr int kSdClkPin = 40;
@@ -48,11 +49,14 @@ bool MediaService::begin() {
 
 void MediaService::update() {
     const int eventValue = playbackFinishedEvent_.exchange(-1);
-    if (eventValue < 0) {
-        return;
+    if (eventValue >= 0) {
+        handlePlaybackFinished(static_cast<AudioPlaybackEvent>(eventValue));
     }
 
-    handlePlaybackFinished(static_cast<AudioPlaybackEvent>(eventValue));
+    if (transientUiSoundResumeReadyAtMs_ != 0 &&
+        static_cast<int32_t>(millis() - transientUiSoundResumeReadyAtMs_) >= 0) {
+        resumeAfterTransientUiSound();
+    }
 }
 
 bool MediaService::playWifiConnectedSound() {
@@ -82,6 +86,7 @@ bool MediaService::playTransientUiSoundOverAlbum(UiSound sound) {
     }
 
     transientUiSoundResumeAtSeconds_ = audioCurrentTimeSeconds();
+    transientUiSoundResumeFilePosition_ = audioCurrentFilePosition();
     transientUiSoundActive_ = true;
     if (!audioStartFile(AudioStorage::LittleFs, path)) {
         transientUiSoundActive_ = false;
@@ -382,24 +387,37 @@ bool MediaService::startCurrentTrackAt(uint32_t startTimeSeconds) {
 void MediaService::clearTransientUiSoundState() {
     transientUiSoundActive_ = false;
     transientUiSoundResumeAtSeconds_ = 0;
+    transientUiSoundResumeFilePosition_ = 0;
+    transientUiSoundResumeReadyAtMs_ = 0;
+}
+
+void MediaService::resumeAfterTransientUiSound() {
+    const uint32_t resumeAtSeconds = transientUiSoundResumeAtSeconds_;
+    const uint32_t resumeFilePosition = transientUiSoundResumeFilePosition_;
+    transientUiSoundResumeReadyAtMs_ = 0;
+    transientUiSoundResumeAtSeconds_ = 0;
+    transientUiSoundResumeFilePosition_ = 0;
+    transientUiSoundActive_ = false;
+
+    if (startCurrentTrack()) {
+        if (resumeFilePosition > 0) {
+            (void)audioSeekToFilePosition(resumeFilePosition);
+            Serial.printf("Media service: restoring track %u to file position %lu (time %us)\n",
+                          static_cast<unsigned>(currentTrackIndex_ + 1),
+                          static_cast<unsigned long>(resumeFilePosition),
+                          static_cast<unsigned>(resumeAtSeconds));
+        }
+        return;
+    }
+
+    Serial.printf("Media service: failed to restart track %u after transient UI sound\n",
+                  static_cast<unsigned>(currentTrackIndex_ + 1));
 }
 
 void MediaService::handlePlaybackFinished(AudioPlaybackEvent event) {
     if (transientUiSoundActive_) {
-        const uint32_t resumeAtSeconds = transientUiSoundResumeAtSeconds_;
-        transientUiSoundActive_ = false;
-        transientUiSoundResumeAtSeconds_ = 0;
-
-        if (startCurrentTrackAt(resumeAtSeconds)) {
-            return;
-        }
-        if (startCurrentTrack()) {
-            return;
-        }
-
-        Serial.printf("Media service: failed to resume track %u after transient UI sound\n",
-                      static_cast<unsigned>(currentTrackIndex_ + 1));
-        event = AudioPlaybackEvent::Failed;
+        transientUiSoundResumeReadyAtMs_ = millis() + kTransientUiResumeDelayMs;
+        return;
     }
 
     if (!albumActive_ || paused_) {

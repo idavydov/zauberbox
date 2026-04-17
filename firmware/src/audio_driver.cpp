@@ -33,6 +33,7 @@ constexpr BaseType_t kAudioServiceCore = 1;
 enum class AudioCommandType : uint8_t {
     Enqueue,
     ReplaceQueue,
+    SeekToFilePosition,
     Stop,
     TogglePause,
     SetVolume,
@@ -47,6 +48,7 @@ struct AudioPlaybackRequest {
 struct AudioCommand {
     AudioCommandType type;
     AudioPlaybackRequest request;
+    uint32_t seekFilePosition;
     uint8_t volume;
 };
 
@@ -253,6 +255,9 @@ bool queueCommand(const AudioCommand &command) {
 void audioServiceTask(void *pvParameters) {
     AudioCommand command = {};
     std::deque<AudioPlaybackRequest> pendingRequests;
+    int32_t pendingSeekFilePosition = -1;
+    uint32_t pendingSeekDeadlineMs = 0;
+    uint32_t pendingSeekNextAttemptAtMs = 0;
 
     while (true) {
         if (xQueueReceive(gAudioCommandQueue, &command, pdMS_TO_TICKS(1)) == pdPASS) {
@@ -263,14 +268,25 @@ void audioServiceTask(void *pvParameters) {
                 case AudioCommandType::ReplaceQueue:
                     pendingRequests.clear();
                     pendingRequests.push_back(command.request);
+                    pendingSeekFilePosition = -1;
+                    pendingSeekDeadlineMs = 0;
+                    pendingSeekNextAttemptAtMs = 0;
                     if (gFilePlayer.isRunning()) {
                         gFilePlayer.stopSong();
                     }
                     gAwaitingNaturalPlaybackEnd = false;
                     gPlaybackPaused = false;
                     break;
+                case AudioCommandType::SeekToFilePosition:
+                    pendingSeekFilePosition = static_cast<int32_t>(command.seekFilePosition);
+                    pendingSeekDeadlineMs = millis() + 5000;
+                    pendingSeekNextAttemptAtMs = millis();
+                    break;
                 case AudioCommandType::Stop:
                     pendingRequests.clear();
+                    pendingSeekFilePosition = -1;
+                    pendingSeekDeadlineMs = 0;
+                    pendingSeekNextAttemptAtMs = 0;
                     if (gFilePlayer.isRunning()) {
                         gFilePlayer.stopSong();
                     }
@@ -306,6 +322,34 @@ void audioServiceTask(void *pvParameters) {
         }
         const bool isRunning = gFilePlayer.isRunning();
 
+        if (pendingSeekFilePosition >= 0) {
+            const uint32_t now = millis();
+            if (!isRunning || gPlaybackPaused) {
+                if (pendingSeekDeadlineMs != 0 &&
+                    static_cast<int32_t>(now - pendingSeekDeadlineMs) >= 0) {
+                    pendingSeekFilePosition = -1;
+                    pendingSeekDeadlineMs = 0;
+                    pendingSeekNextAttemptAtMs = 0;
+                }
+            } else if (pendingSeekNextAttemptAtMs == 0 ||
+                       static_cast<int32_t>(now - pendingSeekNextAttemptAtMs) >= 0) {
+                if (gFilePlayer.setAudioFilePosition(static_cast<uint32_t>(pendingSeekFilePosition))) {
+                    pendingSeekFilePosition = -1;
+                    pendingSeekDeadlineMs = 0;
+                    pendingSeekNextAttemptAtMs = 0;
+                } else if (pendingSeekDeadlineMs != 0 &&
+                           static_cast<int32_t>(now - pendingSeekDeadlineMs) >= 0) {
+                    Serial.printf("Audio file-position seek timed out at pos=%ld\n",
+                                  static_cast<long>(pendingSeekFilePosition));
+                    pendingSeekFilePosition = -1;
+                    pendingSeekDeadlineMs = 0;
+                    pendingSeekNextAttemptAtMs = 0;
+                } else {
+                    pendingSeekNextAttemptAtMs = now + 200;
+                }
+            }
+        }
+
         if (wasRunning && !isRunning) {
             gPlaybackPaused = false;
         }
@@ -315,8 +359,14 @@ void audioServiceTask(void *pvParameters) {
             pendingRequests.pop_front();
             gPlaybackPaused = false;
             if (playRequest(nextRequest)) {
+                pendingSeekFilePosition = -1;
+                pendingSeekDeadlineMs = 0;
+                pendingSeekNextAttemptAtMs = 0;
                 gAwaitingNaturalPlaybackEnd = true;
             } else {
+                pendingSeekFilePosition = -1;
+                pendingSeekDeadlineMs = 0;
+                pendingSeekNextAttemptAtMs = 0;
                 handlePlaybackEvent(AudioPlaybackEvent::Failed);
             }
         }
@@ -402,6 +452,19 @@ bool audioStartFileAtTime(AudioStorage storage, const char *path, uint32_t start
     return queueCommand(command);
 }
 
+bool audioSeekToFilePosition(uint32_t filePosition) {
+    if (!audioInit()) {
+        return false;
+    }
+
+    AudioCommand command = {
+        .type = AudioCommandType::SeekToFilePosition,
+        .request = {},
+        .seekFilePosition = filePosition,
+    };
+    return queueCommand(command);
+}
+
 bool audioStopPlayback() {
     AudioCommand command = {
         .type = AudioCommandType::Stop,
@@ -446,6 +509,10 @@ uint8_t audioVolume() {
 
 uint32_t audioCurrentTimeSeconds() {
     return gFilePlayer.getAudioCurrentTime();
+}
+
+uint32_t audioCurrentFilePosition() {
+    return gFilePlayer.getAudioFilePosition();
 }
 
 void audioSetPlaybackFinishedCallback(AudioPlaybackFinishedCallback callback) {

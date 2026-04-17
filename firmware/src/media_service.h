@@ -46,6 +46,7 @@ class MediaService {
     bool startCurrentTrack();
     bool startCurrentTrackAt(uint32_t startTimeSeconds);
     void clearTransientUiSoundState();
+    void resumeAfterTransientUiSound();
     void handlePlaybackFinished(AudioPlaybackEvent event);
 
     static MediaService *activeInstance_;
@@ -59,4 +60,6 @@ class MediaService {
     bool paused_ = false;
     bool transientUiSoundActive_ = false;
     uint32_t transientUiSoundResumeAtSeconds_ = 0;
+    uint32_t transientUiSoundResumeFilePosition_ = 0;
+    uint32_t transientUiSoundResumeReadyAtMs_ = 0;
 };
