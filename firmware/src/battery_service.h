@@ -43,13 +43,15 @@ class BatteryService {
   private:
     void takeMeasurement();
     static uint8_t estimatePercent(uint16_t batteryMilliVolts);
+    uint16_t currentAverageBatteryMilliVolts() const;
+    void clearMeasurementHistory();
+    void pushBatteryMeasurement(uint16_t batteryMilliVolts);
 
     mutable portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
     BatterySnapshot snapshot_ = {};
-    float filteredBatteryVolts_ = 0.0F;
-    bool hasFilteredBatteryVolts_ = false;
-    bool bootReadingStable_ = false;
-    uint8_t consecutiveSettledSamples_ = 0;
+    uint16_t measurementHistory_[4] = {};
+    uint8_t measurementHistoryCount_ = 0;
+    uint8_t measurementHistoryIndex_ = 0;
     uint32_t nextSampleAtMs_ = 0;
 };
 

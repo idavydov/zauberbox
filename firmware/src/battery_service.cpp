@@ -10,17 +10,15 @@ constexpr uint8_t kBatteryAdcPin = 6;
 constexpr float kBatteryDividerScale = 3.0F;
 constexpr float kBatteryMeasurementOffset = 0.990476F;
 constexpr uint32_t kSampleIntervalMs = 15000;
-constexpr uint32_t kSettlingSampleIntervalMs = 500;
+constexpr uint32_t kFastSampleIntervalMs = 500;
 constexpr uint8_t kSamplesPerMeasurement = 4;
 constexpr uint8_t kBootstrapSamplesPerMeasurement = 12;
 constexpr uint8_t kBootstrapDiscardInitialSamples = 2;
 constexpr uint8_t kBootstrapUsableSamples =
     kBootstrapSamplesPerMeasurement - kBootstrapDiscardInitialSamples;
+constexpr uint8_t kMeasurementHistorySize = 4;
 constexpr uint16_t kInvalidSampleFloorMv = 100;
-constexpr float kFilterAlpha = 0.25F;
-constexpr float kSettlingFilterAlpha = 0.4F;
-constexpr uint8_t kSettledSamplesRequired = 3;
-constexpr uint16_t kStableDeltaMv = 20;
+constexpr uint16_t kJumpThresholdMv = 150;
 constexpr uint16_t kLowThresholdMv = 3600;
 constexpr uint16_t kLowClearThresholdMv = 3675;
 constexpr uint16_t kCriticalThresholdMv = 3450;
@@ -107,10 +105,7 @@ void BatteryService::begin() {
     analogReadResolution(12);
     analogSetPinAttenuation(kBatteryAdcPin, ADC_11db);
 
-    hasFilteredBatteryVolts_ = false;
-    filteredBatteryVolts_ = 0.0F;
-    bootReadingStable_ = false;
-    consecutiveSettledSamples_ = 0;
+    clearMeasurementHistory();
     nextSampleAtMs_ = 0;
 
     portENTER_CRITICAL(&mux_);
@@ -169,13 +164,11 @@ const char *BatteryService::availabilityName(BatteryAvailability availability) {
 
 void BatteryService::takeMeasurement() {
     const uint32_t now = millis();
-    const uint16_t rawMilliVolts = hasFilteredBatteryVolts_
+    const uint16_t rawMilliVolts = measurementHistoryCount_ > 0
         ? averageBatteryRawMilliVolts(kSamplesPerMeasurement)
         : bootstrapBatteryRawMilliVolts();
     if (rawMilliVolts < kInvalidSampleFloorMv) {
-        hasFilteredBatteryVolts_ = false;
-        bootReadingStable_ = false;
-        consecutiveSettledSamples_ = 0;
+        clearMeasurementHistory();
 
         BatterySnapshot nextSnapshot;
         portENTER_CRITICAL(&mux_);
@@ -195,46 +188,30 @@ void BatteryService::takeMeasurement() {
         snapshot_ = nextSnapshot;
         portEXIT_CRITICAL(&mux_);
 
-        nextSampleAtMs_ = now + kSettlingSampleIntervalMs;
+        nextSampleAtMs_ = now + kFastSampleIntervalMs;
 
         Serial.printf("Battery service: raw=%umV unavailable.\n", rawMilliVolts);
         return;
     }
 
-    const float measuredBatteryVolts =
-        (static_cast<float>(rawMilliVolts) * kBatteryDividerScale / 1000.0F) /
-        kBatteryMeasurementOffset;
+    const uint16_t measuredBatteryMilliVolts = static_cast<uint16_t>(roundf(
+        ((static_cast<float>(rawMilliVolts) * kBatteryDividerScale) / kBatteryMeasurementOffset)));
 
-    if (!hasFilteredBatteryVolts_) {
-        filteredBatteryVolts_ = measuredBatteryVolts;
-        hasFilteredBatteryVolts_ = true;
-        consecutiveSettledSamples_ = 1;
-    } else {
-        const float filterAlpha = bootReadingStable_ ? kFilterAlpha : kSettlingFilterAlpha;
-        filteredBatteryVolts_ =
-            (filteredBatteryVolts_ * (1.0F - filterAlpha)) +
-            (measuredBatteryVolts * filterAlpha);
-
-        const uint16_t filterDeltaMv = static_cast<uint16_t>(
-            roundf(fabsf(measuredBatteryVolts - filteredBatteryVolts_) * 1000.0F));
-        if (!bootReadingStable_) {
-            if (filterDeltaMv <= kStableDeltaMv) {
-                if (consecutiveSettledSamples_ < kSettledSamplesRequired) {
-                    ++consecutiveSettledSamples_;
-                }
-            } else {
-                consecutiveSettledSamples_ = 0;
-            }
-            if (consecutiveSettledSamples_ >= kSettledSamplesRequired) {
-                bootReadingStable_ = true;
-            }
-        }
+    const uint16_t previousAverageBatteryMilliVolts = currentAverageBatteryMilliVolts();
+    if (measurementHistoryCount_ == kMeasurementHistorySize &&
+        abs(static_cast<int>(measuredBatteryMilliVolts) -
+            static_cast<int>(previousAverageBatteryMilliVolts)) >= kJumpThresholdMv) {
+        Serial.printf("Battery service: measurement jump detected, resetting history (%umV -> %umV).\n",
+                      previousAverageBatteryMilliVolts,
+                      measuredBatteryMilliVolts);
+        clearMeasurementHistory();
     }
 
-    const uint16_t batteryMilliVolts =
-        static_cast<uint16_t>(roundf(filteredBatteryVolts_ * 1000.0F));
+    pushBatteryMeasurement(measuredBatteryMilliVolts);
+
+    const uint16_t batteryMilliVolts = currentAverageBatteryMilliVolts();
     const uint8_t percent = estimatePercent(batteryMilliVolts);
-    const bool readingStable = bootReadingStable_;
+    const bool readingStable = measurementHistoryCount_ >= kMeasurementHistorySize;
     const BatteryAvailability availability =
         readingStable ? BatteryAvailability::Available : BatteryAvailability::Settling;
 
@@ -275,7 +252,7 @@ void BatteryService::takeMeasurement() {
     snapshot_ = nextSnapshot;
     portEXIT_CRITICAL(&mux_);
 
-    nextSampleAtMs_ = now + (readingStable ? kSampleIntervalMs : kSettlingSampleIntervalMs);
+    nextSampleAtMs_ = now + (readingStable ? kSampleIntervalMs : kFastSampleIntervalMs);
 
     Serial.printf(
         "Battery service: raw=%umV battery=%umV percent=%u low=%d critical=%d stable=%d availability=%s.\n",
@@ -286,6 +263,35 @@ void BatteryService::takeMeasurement() {
                   nextSnapshot.critical ? 1 : 0,
                   readingStable ? 1 : 0,
                   availabilityName(availability));
+}
+
+uint16_t BatteryService::currentAverageBatteryMilliVolts() const {
+    if (measurementHistoryCount_ == 0) {
+        return 0;
+    }
+
+    uint32_t total = 0;
+    for (uint8_t i = 0; i < measurementHistoryCount_; ++i) {
+        total += measurementHistory_[i];
+    }
+
+    return static_cast<uint16_t>(total / measurementHistoryCount_);
+}
+
+void BatteryService::clearMeasurementHistory() {
+    measurementHistoryCount_ = 0;
+    measurementHistoryIndex_ = 0;
+    for (uint16_t &sample : measurementHistory_) {
+        sample = 0;
+    }
+}
+
+void BatteryService::pushBatteryMeasurement(uint16_t batteryMilliVolts) {
+    measurementHistory_[measurementHistoryIndex_] = batteryMilliVolts;
+    measurementHistoryIndex_ = (measurementHistoryIndex_ + 1) % kMeasurementHistorySize;
+    if (measurementHistoryCount_ < kMeasurementHistorySize) {
+        ++measurementHistoryCount_;
+    }
 }
 
 uint8_t BatteryService::estimatePercent(uint16_t batteryMilliVolts) {
