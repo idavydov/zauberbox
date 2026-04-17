@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "app_state.h"
 #include "battery_policy.h"
 #include "debug_log.h"
 
@@ -10,7 +11,9 @@ namespace {
 constexpr uint8_t kBatteryAdcPin = 6;
 constexpr float kBatteryDividerScale = 3.0F;
 constexpr float kBatteryMeasurementOffset = 0.990476F;
-constexpr uint32_t kSampleIntervalMs = 15000;
+constexpr uint32_t kPlayingSampleIntervalMs = 30000;
+constexpr uint32_t kIdleOrPausedSampleIntervalMs = 60000;
+constexpr uint32_t kDefaultSampleIntervalMs = 30000;
 constexpr uint32_t kFastSampleIntervalMs = 500;
 constexpr uint8_t kSamplesPerMeasurement = 4;
 constexpr uint8_t kBootstrapSamplesPerMeasurement = 12;
@@ -94,6 +97,18 @@ uint16_t bootstrapBatteryRawMilliVolts() {
     return static_cast<uint16_t>(rawMilliVoltsTotal / includedSampleCount);
 }
 
+uint32_t steadySampleIntervalMs() {
+    switch (appStateStore().current()) {
+        case AppState::Playing:
+            return kPlayingSampleIntervalMs;
+        case AppState::Idle:
+        case AppState::Paused:
+            return kIdleOrPausedSampleIntervalMs;
+        default:
+            return kDefaultSampleIntervalMs;
+    }
+}
+
 } // namespace
 
 void BatteryService::begin() {
@@ -164,8 +179,10 @@ void BatteryService::takeMeasurement() {
     if (rawMilliVolts < kInvalidSampleFloorMv) {
         clearMeasurementHistory();
 
+        BatterySnapshot previousSnapshot;
         BatterySnapshot nextSnapshot;
         portENTER_CRITICAL(&mux_);
+        previousSnapshot = snapshot_;
         nextSnapshot = snapshot_;
         nextSnapshot.initialized = true;
         nextSnapshot.hasReading = false;
@@ -184,7 +201,10 @@ void BatteryService::takeMeasurement() {
 
         nextSampleAtMs_ = now + kFastSampleIntervalMs;
 
-        Serial.printf("Battery service: raw=%umV unavailable.\n", rawMilliVolts);
+        if (previousSnapshot.availability != BatteryAvailability::Unavailable ||
+            previousSnapshot.readingAvailable) {
+            Serial.printf("Battery service: raw=%umV unavailable.\n", rawMilliVolts);
+        }
         return;
     }
 
@@ -248,17 +268,21 @@ void BatteryService::takeMeasurement() {
     snapshot_ = nextSnapshot;
     portEXIT_CRITICAL(&mux_);
 
-    nextSampleAtMs_ = now + (readingStable ? kSampleIntervalMs : kFastSampleIntervalMs);
+    nextSampleAtMs_ = now + (readingStable ? steadySampleIntervalMs() : kFastSampleIntervalMs);
 
-    Serial.printf(
-        "Battery service: raw=%umV battery=%umV percent=%u low=%d critical=%d stable=%d availability=%s.\n",
-                  rawMilliVolts,
-                  batteryMilliVolts,
-                  percent,
-                  nextSnapshot.low ? 1 : 0,
-                  nextSnapshot.critical ? 1 : 0,
-                  readingStable ? 1 : 0,
-                  availabilityName(availability));
+    if (previousSnapshot.availability != nextSnapshot.availability ||
+        previousSnapshot.low != nextSnapshot.low ||
+        previousSnapshot.critical != nextSnapshot.critical) {
+        Serial.printf(
+            "Battery service: raw=%umV battery=%umV percent=%u low=%d critical=%d stable=%d availability=%s.\n",
+                      rawMilliVolts,
+                      batteryMilliVolts,
+                      percent,
+                      nextSnapshot.low ? 1 : 0,
+                      nextSnapshot.critical ? 1 : 0,
+                      readingStable ? 1 : 0,
+                      availabilityName(availability));
+    }
 }
 
 uint16_t BatteryService::currentAverageBatteryMilliVolts() const {
