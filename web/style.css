@@ -12,6 +12,9 @@ body {
 /* Dashboard Styles */
 .nav-battery {
     align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     max-width: 18rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -20,6 +23,19 @@ body {
     color: var(--pico-muted-color);
     opacity: 0.8;
 }
+.nav-battery-icon {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+.nav-battery-icon svg {
+    width: 0.95rem;
+    height: 0.95rem;
+}
+.nav-battery-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .nav-battery.low {
     color: #b45309;
     opacity: 0.95;
@@ -27,6 +43,10 @@ body {
 .nav-battery.critical {
     color: var(--pico-error-background);
     opacity: 1;
+}
+.nav-battery.settling,
+.nav-battery.unavailable {
+    opacity: 0.7;
 }
 
 .dir-grid {

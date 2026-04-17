@@ -58,8 +58,32 @@ const ICONS = {
     image: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
     file: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`,
     download: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
-    check: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+    check: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+    batteryFull: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-full-icon lucide-battery-full"><path d="M10 10v4"/><path d="M14 10v4"/><path d="M22 14v-4"/><path d="M6 10v4"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`,
+    batteryMedium: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-medium-icon lucide-battery-medium"><path d="M10 14v-4"/><path d="M22 14v-4"/><path d="M6 14v-4"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`,
+    batteryLow: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-low-icon lucide-battery-low"><path d="M22 14v-4"/><path d="M6 14v-4"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`,
+    batteryEmpty: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-icon lucide-battery"><path d="M 22 14 L 22 10"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`
 };
+
+function batteryIconName() {
+    const battery = state.deviceStatus?.battery;
+    if (!battery?.initialized || !battery?.reading_available || !battery?.has_reading) {
+        return 'batteryEmpty';
+    }
+    if (!battery?.reading_stable || battery?.availability === 'settling') {
+        return 'batteryEmpty';
+    }
+    if (battery?.is_critical || battery?.percent <= 10) {
+        return 'batteryEmpty';
+    }
+    if (battery?.is_low || battery?.percent <= 30) {
+        return 'batteryLow';
+    }
+    if (battery?.percent <= 75) {
+        return 'batteryMedium';
+    }
+    return 'batteryFull';
+}
 
 function toggleSelectionMode() {
     state.selectionMode = !state.selectionMode;
@@ -398,6 +422,23 @@ function batterySummaryText() {
         formatBatteryVoltage(battery.voltage_mv)
     ];
     return parts.join(' · ');
+}
+
+function batteryStateClass() {
+    const battery = state.deviceStatus?.battery;
+    if (battery?.is_critical) {
+        return 'critical';
+    }
+    if (battery?.is_low) {
+        return 'low';
+    }
+    if (!battery?.initialized || !battery?.reading_available || !battery?.has_reading) {
+        return 'unavailable';
+    }
+    if (!battery?.reading_stable || battery?.availability === 'settling') {
+        return 'settling';
+    }
+    return '';
 }
 
 async function refreshDebugPreview() {
@@ -1125,16 +1166,16 @@ function render() {
     if (state.view === 'dashboard') {
         const battery = state.deviceStatus?.battery;
         const batterySummary = batterySummaryText();
-        const batteryStateClass = battery?.is_critical
-            ? 'critical'
-            : battery?.is_low
-                ? 'low'
-                : '';
+        const batteryState = batteryStateClass();
         const batteryDetail = state.deviceStatusError || 'Voltage-based estimate. Power-source detection is not wired yet.';
+        const batteryIcon = ICONS[batteryIconName()];
 
         navLeft.innerHTML = `<li><strong>Zauberbox</strong></li>`;
         navRight.innerHTML = `
-            <li class="nav-battery ${batteryStateClass}" title="${escapeHtml(batteryDetail)}">${escapeHtml(batterySummary)}</li>
+            <li class="nav-battery ${batteryState}" title="${escapeHtml(batteryDetail)}">
+                <span class="nav-battery-icon" aria-hidden="true">${batteryIcon}</span>
+                <span class="nav-battery-text">${escapeHtml(batterySummary)}</span>
+            </li>
             <li><button class="${state.selectionMode ? 'primary' : 'contrast outline'}" style="padding: 4px 8px;" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select'}</button></li>
         `;
 
