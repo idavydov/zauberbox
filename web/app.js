@@ -1167,12 +1167,12 @@ function render() {
         const battery = state.deviceStatus?.battery;
         const batterySummary = batterySummaryText();
         const batteryState = batteryStateClass();
-        const batteryDetail = state.deviceStatusError || 'Voltage-based estimate. Power-source detection is not wired yet.';
+		const batteryDetail = state.deviceStatusError ? `title="${escapeHtml(state.deviceStatusError)}"` : '';
         const batteryIcon = ICONS[batteryIconName()];
 
         navLeft.innerHTML = `<li><strong>Zauberbox</strong></li>`;
         navRight.innerHTML = `
-            <li class="nav-battery ${batteryState}" title="${escapeHtml(batteryDetail)}">
+            <li class="nav-battery ${batteryState}" ${batteryDetail}>
                 <span class="nav-battery-icon" aria-hidden="true">${batteryIcon}</span>
                 <span class="nav-battery-text">${escapeHtml(batterySummary)}</span>
             </li>
