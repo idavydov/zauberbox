@@ -1,6 +1,8 @@
 #include "app_controller.h"
 
 #include <ESPmDNS.h>
+#include <driver/rtc_io.h>
+#include <esp_sleep.h>
 
 #include "app_state.h"
 #include "audio_driver.h"
@@ -17,11 +19,37 @@ constexpr uint32_t kQrErrorResumeDelayMs = 250;
 constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
 constexpr uint32_t kScanStartPlaybackStartFallbackMs = 3000;
 constexpr uint32_t kWifiPortalResumeFallbackMs = 5000;
+constexpr uint32_t kIdleSleepTimeoutMs = 10000;
+constexpr uint32_t kBootWakeButtonSuppressionMs = 1500;
 constexpr char kWifiMdnsHostname[] = "zauberbox";
+
+const char *sleepTriggerName(AppController::SleepTrigger trigger) {
+    switch (trigger) {
+        case AppController::SleepTrigger::None:
+            return "none";
+        case AppController::SleepTrigger::IdleTimeout:
+            return "idle_timeout";
+        case AppController::SleepTrigger::CriticalBattery:
+            return "critical_battery";
+    }
+
+    return "unknown";
+}
 
 } // namespace
 
 void AppController::begin() {
+    const esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
+    if (wakeupCause != ESP_SLEEP_WAKEUP_UNDEFINED) {
+        Serial.printf("App controller: wakeup cause=%d\n", static_cast<int>(wakeupCause));
+    }
+    suppressBootWakeButtonCycle_ = wakeupCause == ESP_SLEEP_WAKEUP_EXT0;
+    bootWakeButtonSuppressionUntilMs_ =
+        suppressBootWakeButtonCycle_ ? millis() + kBootWakeButtonSuppressionMs : 0;
+    if (suppressBootWakeButtonCycle_) {
+        Serial.println("App controller: suppressing initial BOOT button cycle after deep-sleep wake.");
+    }
+
     appStateStore().init();
     configService().begin();
     batteryService().begin();
@@ -49,6 +77,14 @@ void AppController::begin() {
 }
 
 void AppController::update() {
+    if (suppressBootWakeButtonCycle_ &&
+        bootWakeButtonSuppressionUntilMs_ != 0 &&
+        millis() >= bootWakeButtonSuppressionUntilMs_) {
+        suppressBootWakeButtonCycle_ = false;
+        bootWakeButtonSuppressionUntilMs_ = 0;
+        Serial.println("App controller: BOOT wake suppression window expired.");
+    }
+
     handlePendingButtonEvents();
     batteryService().update();
     wifiService_.update();
@@ -60,6 +96,8 @@ void AppController::update() {
     handleMutedStateAudioOutput();
     handlePendingQrAlbumStart();
     mediaService_.update();
+    handleBatteryPowerPolicy();
+    handleSleepState();
 }
 
 void AppController::handlePendingButtonEvents() {
@@ -70,6 +108,16 @@ void AppController::handlePendingButtonEvents() {
 }
 
 void AppController::handleButtonEvent(const ButtonEvent &event) {
+    if (event.buttonId == ButtonId::Boot && suppressBootWakeButtonCycle_) {
+        if (event.pressKind == ButtonPressKind::ShortPress ||
+            event.pressKind == ButtonPressKind::LongPress) {
+            suppressBootWakeButtonCycle_ = false;
+            bootWakeButtonSuppressionUntilMs_ = 0;
+            Serial.println("App controller: BOOT wake button cycle consumed.");
+        }
+        return;
+    }
+
     if (event.buttonId == ButtonId::Boot) {
         if (event.pressKind == ButtonPressKind::PressDown) {
             if (queueMutedUiSound(UiSound::Button)) {
@@ -438,4 +486,122 @@ void AppController::handlePendingQrAlbumStart() {
         resumeScanningAfterQrError_ = true;
         resumeScanningReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
     }
+}
+
+void AppController::handleBatteryPowerPolicy() {
+    const AppState state = appStateStore().current();
+    if (state != AppState::Sleep) {
+        sleepTrigger_ = SleepTrigger::None;
+    }
+
+    if (state != lastObservedState_) {
+        lastObservedState_ = state;
+        idleEnteredAtMs_ = state == AppState::Idle ? millis() : 0;
+    }
+
+    if (state == AppState::Sleep || state == AppState::Resetting || state == AppState::Boot) {
+        return;
+    }
+
+    const BatterySnapshot battery = batteryService().snapshot();
+    if (!canUseBatteryPolicy(battery)) {
+        return;
+    }
+
+    if (shouldEnterCriticalBatterySleep(battery, state)) {
+        requestSleep(SleepTrigger::CriticalBattery, &battery);
+        return;
+    }
+
+    if (state != AppState::Idle ||
+        wifiService_.isEnabled() ||
+        !pendingQrAlbumId_.isEmpty()) {
+        return;
+    }
+
+    if (idleEnteredAtMs_ == 0) {
+        idleEnteredAtMs_ = millis();
+    }
+
+    if (millis() - idleEnteredAtMs_ < kIdleSleepTimeoutMs) {
+        return;
+    }
+
+    requestSleep(SleepTrigger::IdleTimeout, &battery);
+}
+
+void AppController::handleSleepState() {
+    if (appStateStore().current() != AppState::Sleep) {
+        return;
+    }
+
+    if (audioIsRunning() ||
+        qrService_.isScanning() ||
+        qrService_.isCameraReady() ||
+        pendingMutedUiSound_ ||
+        scanStartChimeReadyAtMs_ != 0 ||
+        scanStartChimeQueued_ ||
+        scanStartChimeMuteReadyAtMs_ != 0 ||
+        scanStartChimePlaybackWaitUntilMs_ != 0) {
+        return;
+    }
+
+    enterDeepSleep();
+}
+
+bool AppController::canUseBatteryPolicy(const BatterySnapshot &battery) const {
+    return battery.initialized &&
+           battery.hasReading &&
+           battery.readingAvailable &&
+           battery.readingStable &&
+           battery.availability == BatteryAvailability::Available;
+}
+
+bool AppController::shouldEnterCriticalBatterySleep(const BatterySnapshot &battery,
+                                                    AppState state) const {
+    if (!battery.critical) {
+        return false;
+    }
+
+    return state == AppState::Idle ||
+           state == AppState::QrScan ||
+           state == AppState::DebugCameraPreview;
+}
+
+void AppController::requestSleep(SleepTrigger trigger, const BatterySnapshot *battery) {
+    if (appStateStore().current() == AppState::Sleep) {
+        return;
+    }
+
+    if (!appStateStore().transitionTo(AppState::Sleep)) {
+        return;
+    }
+
+    sleepTrigger_ = trigger;
+    if (battery) {
+        Serial.printf("App controller: sleep requested (%s) at %umV (%u%%).\n",
+                      sleepTriggerName(trigger),
+                      battery->batteryMilliVolts,
+                      battery->percent);
+    } else {
+        Serial.printf("App controller: sleep requested (%s).\n",
+                      sleepTriggerName(trigger));
+    }
+}
+
+void AppController::enterDeepSleep() {
+    Serial.printf("App controller: entering deep sleep (%s).\n",
+                  sleepTriggerName(sleepTrigger_));
+
+    wifiService_.disable();
+    (void)audioStopPlayback();
+    (void)audioDisableOutputForCameraScan();
+
+    pinMode(0, INPUT_PULLUP);
+    rtc_gpio_pullup_en(GPIO_NUM_0);
+    rtc_gpio_pulldown_dis(GPIO_NUM_0);
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+    delay(50);
+    esp_deep_sleep_start();
 }

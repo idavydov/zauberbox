@@ -12,6 +12,12 @@
 
 class AppController {
   public:
+    enum class SleepTrigger : uint8_t {
+        None,
+        IdleTimeout,
+        CriticalBattery,
+    };
+
     void begin();
     void update();
 
@@ -24,11 +30,17 @@ class AppController {
     void handlePendingMutedUiSound();
     void handleMutedStateAudioOutput();
     void handlePendingQrAlbumStart();
+    void handleBatteryPowerPolicy();
+    void handleSleepState();
     void handleButtonEvent(const ButtonEvent &event);
     bool handleQrAlbumScanned(const String &albumId);
     void noteUiSoundQueued(uint32_t holdMs = 250);
     bool queueMutedUiSound(UiSound sound);
     bool shouldMuteOutputInCurrentState() const;
+    bool canUseBatteryPolicy(const BatterySnapshot &battery) const;
+    bool shouldEnterCriticalBatterySleep(const BatterySnapshot &battery, AppState state) const;
+    void requestSleep(SleepTrigger trigger, const BatterySnapshot *battery = nullptr);
+    void enterDeepSleep();
 
     ButtonController buttonController_;
     LedController ledController_;
@@ -54,4 +66,9 @@ class AppController {
     bool wifiFailureSoundRunningSeen_ = false;
     uint32_t wifiPortalResumeFallbackAtMs_ = 0;
     uint32_t uiSoundMuteBlockUntilMs_ = 0;
+    AppState lastObservedState_ = AppState::Boot;
+    uint32_t idleEnteredAtMs_ = 0;
+    SleepTrigger sleepTrigger_ = SleepTrigger::None;
+    bool suppressBootWakeButtonCycle_ = false;
+    uint32_t bootWakeButtonSuppressionUntilMs_ = 0;
 };
