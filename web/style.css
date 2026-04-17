@@ -129,17 +129,17 @@ body {
     background: var(--pico-card-background-color);
     border: 1px solid var(--pico-muted-border-color);
     border-radius: 50%;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.2s, transform 0.2s;
+    transition: transform 0.2s;
     z-index: 5;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
-.dir-card .delete-btn { right: 0.5rem; opacity: 0; color: var(--pico-error-background); }
-.dir-card:hover .delete-btn { opacity: 1; }
-.dir-card .delete-btn:hover { background: var(--pico-error-background); color: white; border-color: var(--pico-error-background); }
+.dir-card .delete-btn { right: 0.5rem; color: var(--pico-error-background); }
+.dir-card .delete-btn:hover { transform: scale(1.1); }
 
 .dir-card .select-overlay { left: 0.5rem; opacity: 0; color: var(--pico-primary); }
 .selection-mode .dir-card .select-overlay { opacity: 1; }
@@ -261,12 +261,12 @@ body {
 }
 .cover-edit-overlay {
     top: 1.5rem;
-    right: 1.5rem;
+    left: 1.5rem;
     color: var(--pico-primary);
 }
 .cover-delete-overlay {
     top: 1.5rem;
-    left: 1.5rem;
+    right: 1.5rem;
     color: var(--pico-error-background);
 }
 .cover-edit-overlay:hover, .cover-delete-overlay:hover { transform: scale(1.1); }
