@@ -498,6 +498,10 @@ async function clearDebugBatteryOverride() {
 }
 
 function applyDebugBatteryPreset(voltageMv) {
+    const voltageInput = document.getElementById('debug-battery-voltage');
+    const delayInput = document.getElementById('debug-battery-delay');
+    if (voltageInput) voltageInput.value = (voltageMv / 1000).toFixed(2);
+    if (delayInput) delayInput.value = '10';
     setDebugBatteryOverride(voltageMv, 10000);
 }
 
@@ -1496,39 +1500,66 @@ function render() {
         const override = battery?.debug_override;
         const batteryText = batterySummaryText();
         const overrideText = debugBatteryOverrideStatusText();
+        const existingLiveStatus = document.querySelector('.debug-battery-live-status');
+        const existingOverrideStatus = document.querySelector('.debug-battery-override-status');
+        const existingError = document.querySelector('.debug-battery-error');
+        const existingNote = document.querySelector('.debug-battery-note');
+        const existingVoltageInput = document.getElementById('debug-battery-voltage');
+        const existingDelayInput = document.getElementById('debug-battery-delay');
+        if (existingLiveStatus &&
+            existingOverrideStatus &&
+            existingError &&
+            existingNote &&
+            existingVoltageInput &&
+            existingDelayInput) {
+            existingLiveStatus.textContent = batteryText;
+            existingOverrideStatus.textContent = overrideText;
+            existingError.textContent = state.debugBatteryError || '';
+            existingError.className = `debug-status debug-battery-error${state.debugBatteryError ? ' error' : ''}`;
+            existingNote.textContent = override?.active
+                ? 'Effective battery is currently overridden. Sleep, LED, and warning logic use the fake voltage.'
+                : 'Use a delay so you can start playback or enter the state you want to test first.';
 
-        app.innerHTML = `
-            <section class="debug-grid">
-                <article class="debug-card">
-                    <header class="debug-card-header">
-                        <div>
-                            <strong>Battery Test</strong>
-                            <p>Schedules a RAM-only fake battery voltage. It is applied after a delay and disappears on reboot.</p>
+            if (document.activeElement !== existingVoltageInput && override?.enabled) {
+                existingVoltageInput.value = ((override.target_mv || 0) / 1000).toFixed(2);
+            }
+            if (document.activeElement !== existingDelayInput && override?.enabled && !override.active) {
+                existingDelayInput.value = String(Math.max(0, Math.ceil((override.activate_in_ms || 0) / 1000)));
+            }
+        } else {
+            app.innerHTML = `
+                <section class="debug-grid">
+                    <article class="debug-card">
+                        <header class="debug-card-header">
+                            <div>
+                                <strong>Battery Test</strong>
+                                <p>Schedules a RAM-only fake battery voltage. It is applied after a delay and disappears on reboot.</p>
+                            </div>
+                        </header>
+                        <p class="debug-status debug-battery-error${state.debugBatteryError ? ' error' : ''}">${escapeHtml(state.debugBatteryError || '')}</p>
+                        <p class="debug-status debug-battery-live-status">${escapeHtml(batteryText)}</p>
+                        <p class="debug-status debug-battery-override-status">${escapeHtml(overrideText)}</p>
+                        <small class="debug-battery-note">${override?.active ? 'Effective battery is currently overridden. Sleep, LED, and warning logic use the fake voltage.' : 'Use a delay so you can start playback or enter the state you want to test first.'}</small>
+                        <div class="debug-battery-actions">
+                            <button class="secondary" type="button" onclick="applyDebugBatteryPreset(3600)">3.60V in 10s</button>
+                            <button class="secondary" type="button" onclick="applyDebugBatteryPreset(3450)">3.45V in 10s</button>
+                            <button class="contrast outline" type="button" onclick="clearDebugBatteryOverride()">Clear Override</button>
                         </div>
-                    </header>
-                    ${state.debugBatteryError ? `<p class="debug-status error">${escapeHtml(state.debugBatteryError)}</p>` : ''}
-                    <p class="debug-status">${escapeHtml(batteryText)}</p>
-                    <p class="debug-status">${escapeHtml(overrideText)}</p>
-                    ${override?.active ? `<small>Effective battery is currently overridden. Sleep, LED, and warning logic use the fake voltage.</small>` : `<small>Use a delay so you can start playback or enter the state you want to test first.</small>`}
-                    <div class="debug-battery-actions">
-                        <button class="secondary" type="button" onclick="applyDebugBatteryPreset(3600)">3.60V in 10s</button>
-                        <button class="secondary" type="button" onclick="applyDebugBatteryPreset(3450)">3.45V in 10s</button>
-                        <button class="contrast outline" type="button" onclick="clearDebugBatteryOverride()">Clear Override</button>
-                    </div>
-                    <form class="debug-battery-form" onsubmit="return applyCustomDebugBatteryOverride(event)">
-                        <label>
-                            Voltage (V)
-                            <input id="debug-battery-voltage" type="number" min="3.0" max="4.5" step="0.01" value="${override?.enabled ? ((override.target_mv || 0) / 1000).toFixed(2) : '3.45'}">
-                        </label>
-                        <label>
-                            Delay (s)
-                            <input id="debug-battery-delay" type="number" min="0" max="600" step="1" value="${override?.enabled && !override.active ? Math.max(0, Math.ceil((override.activate_in_ms || 0) / 1000)) : 10}">
-                        </label>
-                        <button type="submit">Arm Custom Voltage</button>
-                    </form>
-                </article>
-            </section>
-        `;
+                        <form class="debug-battery-form" onsubmit="return applyCustomDebugBatteryOverride(event)">
+                            <label>
+                                Voltage (V)
+                                <input id="debug-battery-voltage" type="number" min="3.0" max="4.5" step="0.01" value="${override?.enabled ? ((override.target_mv || 0) / 1000).toFixed(2) : '3.45'}">
+                            </label>
+                            <label>
+                                Delay (s)
+                                <input id="debug-battery-delay" type="number" min="0" max="600" step="1" value="${override?.enabled && !override.active ? Math.max(0, Math.ceil((override.activate_in_ms || 0) / 1000)) : 10}">
+                            </label>
+                            <button type="submit">Arm Custom Voltage</button>
+                        </form>
+                    </article>
+                </section>
+            `;
+        }
     } else {
         const uploadState = state.upload;
         const uploadInProgress = Boolean(uploadState);
