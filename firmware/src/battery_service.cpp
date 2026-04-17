@@ -10,10 +10,17 @@ constexpr uint8_t kBatteryAdcPin = 6;
 constexpr float kBatteryDividerScale = 3.0F;
 constexpr float kBatteryMeasurementOffset = 0.990476F;
 constexpr uint32_t kSampleIntervalMs = 5000;
+constexpr uint32_t kSettlingSampleIntervalMs = 500;
 constexpr uint8_t kSamplesPerMeasurement = 4;
+constexpr uint8_t kBootstrapSamplesPerMeasurement = 12;
+constexpr uint8_t kBootstrapDiscardInitialSamples = 2;
+constexpr uint8_t kBootstrapUsableSamples =
+    kBootstrapSamplesPerMeasurement - kBootstrapDiscardInitialSamples;
 constexpr uint16_t kInvalidSampleFloorMv = 100;
-constexpr uint8_t kSamplesUntilStable = 2;
 constexpr float kFilterAlpha = 0.25F;
+constexpr float kSettlingFilterAlpha = 0.4F;
+constexpr uint8_t kSettledSamplesRequired = 3;
+constexpr uint16_t kStableDeltaMv = 20;
 constexpr uint16_t kLowThresholdMv = 3600;
 constexpr uint16_t kLowClearThresholdMv = 3675;
 constexpr uint16_t kCriticalThresholdMv = 3450;
@@ -45,11 +52,66 @@ static_assert(sizeof(kPercentCurveMv) / sizeof(kPercentCurveMv[0]) ==
                   sizeof(kPercentCurveValues) / sizeof(kPercentCurveValues[0]),
               "Battery percent curve arrays must match");
 
+uint16_t averageBatteryRawMilliVolts(uint8_t sampleCount) {
+    uint32_t rawMilliVoltsTotal = 0;
+    for (uint8_t i = 0; i < sampleCount; ++i) {
+        rawMilliVoltsTotal += static_cast<uint32_t>(analogReadMilliVolts(kBatteryAdcPin));
+    }
+
+    return static_cast<uint16_t>(rawMilliVoltsTotal / sampleCount);
+}
+
+void sortSamples(uint16_t *samples, uint8_t count) {
+    for (uint8_t i = 1; i < count; ++i) {
+        const uint16_t value = samples[i];
+        int8_t insertIndex = static_cast<int8_t>(i) - 1;
+        while (insertIndex >= 0 && samples[insertIndex] > value) {
+            samples[insertIndex + 1] = samples[insertIndex];
+            --insertIndex;
+        }
+        samples[insertIndex + 1] = value;
+    }
+}
+
+uint16_t bootstrapBatteryRawMilliVolts() {
+    uint16_t samples[kBootstrapSamplesPerMeasurement];
+    for (uint8_t i = 0; i < kBootstrapSamplesPerMeasurement; ++i) {
+        samples[i] = static_cast<uint16_t>(analogReadMilliVolts(kBatteryAdcPin));
+    }
+
+    uint16_t usableSamples[kBootstrapUsableSamples];
+    for (uint8_t i = 0; i < kBootstrapUsableSamples; ++i) {
+        usableSamples[i] = samples[i + kBootstrapDiscardInitialSamples];
+    }
+
+    sortSamples(usableSamples, kBootstrapUsableSamples);
+
+    uint8_t trimCount = 0;
+    if (kBootstrapUsableSamples > 4) {
+        trimCount = 1;
+    }
+
+    uint32_t rawMilliVoltsTotal = 0;
+    uint8_t includedSampleCount = 0;
+    for (uint8_t i = trimCount; i < kBootstrapUsableSamples - trimCount; ++i) {
+        rawMilliVoltsTotal += usableSamples[i];
+        ++includedSampleCount;
+    }
+
+    return static_cast<uint16_t>(rawMilliVoltsTotal / includedSampleCount);
+}
+
 } // namespace
 
 void BatteryService::begin() {
     analogReadResolution(12);
     analogSetPinAttenuation(kBatteryAdcPin, ADC_11db);
+
+    hasFilteredBatteryVolts_ = false;
+    filteredBatteryVolts_ = 0.0F;
+    bootReadingStable_ = false;
+    consecutiveSettledSamples_ = 0;
+    nextSampleAtMs_ = 0;
 
     portENTER_CRITICAL(&mux_);
     snapshot_ = {};
@@ -107,16 +169,13 @@ const char *BatteryService::availabilityName(BatteryAvailability availability) {
 
 void BatteryService::takeMeasurement() {
     const uint32_t now = millis();
-    uint32_t rawMilliVoltsTotal = 0;
-    for (uint8_t i = 0; i < kSamplesPerMeasurement; ++i) {
-        rawMilliVoltsTotal += static_cast<uint32_t>(analogReadMilliVolts(kBatteryAdcPin));
-    }
-
-    const uint16_t rawMilliVolts =
-        static_cast<uint16_t>(rawMilliVoltsTotal / kSamplesPerMeasurement);
+    const uint16_t rawMilliVolts = hasFilteredBatteryVolts_
+        ? averageBatteryRawMilliVolts(kSamplesPerMeasurement)
+        : bootstrapBatteryRawMilliVolts();
     if (rawMilliVolts < kInvalidSampleFloorMv) {
         hasFilteredBatteryVolts_ = false;
-        consecutiveValidSamples_ = 0;
+        bootReadingStable_ = false;
+        consecutiveSettledSamples_ = 0;
 
         BatterySnapshot nextSnapshot;
         portENTER_CRITICAL(&mux_);
@@ -136,7 +195,7 @@ void BatteryService::takeMeasurement() {
         snapshot_ = nextSnapshot;
         portEXIT_CRITICAL(&mux_);
 
-        nextSampleAtMs_ = now + kSampleIntervalMs;
+        nextSampleAtMs_ = now + kSettlingSampleIntervalMs;
 
         Serial.printf("Battery service: raw=%umV unavailable.\n", rawMilliVolts);
         return;
@@ -149,20 +208,33 @@ void BatteryService::takeMeasurement() {
     if (!hasFilteredBatteryVolts_) {
         filteredBatteryVolts_ = measuredBatteryVolts;
         hasFilteredBatteryVolts_ = true;
-        consecutiveValidSamples_ = 1;
+        consecutiveSettledSamples_ = 1;
     } else {
+        const float filterAlpha = bootReadingStable_ ? kFilterAlpha : kSettlingFilterAlpha;
         filteredBatteryVolts_ =
-            (filteredBatteryVolts_ * (1.0F - kFilterAlpha)) +
-            (measuredBatteryVolts * kFilterAlpha);
-        if (consecutiveValidSamples_ < kSamplesUntilStable) {
-            ++consecutiveValidSamples_;
+            (filteredBatteryVolts_ * (1.0F - filterAlpha)) +
+            (measuredBatteryVolts * filterAlpha);
+
+        const uint16_t filterDeltaMv = static_cast<uint16_t>(
+            roundf(fabsf(measuredBatteryVolts - filteredBatteryVolts_) * 1000.0F));
+        if (!bootReadingStable_) {
+            if (filterDeltaMv <= kStableDeltaMv) {
+                if (consecutiveSettledSamples_ < kSettledSamplesRequired) {
+                    ++consecutiveSettledSamples_;
+                }
+            } else {
+                consecutiveSettledSamples_ = 0;
+            }
+            if (consecutiveSettledSamples_ >= kSettledSamplesRequired) {
+                bootReadingStable_ = true;
+            }
         }
     }
 
     const uint16_t batteryMilliVolts =
         static_cast<uint16_t>(roundf(filteredBatteryVolts_ * 1000.0F));
     const uint8_t percent = estimatePercent(batteryMilliVolts);
-    const bool readingStable = consecutiveValidSamples_ >= kSamplesUntilStable;
+    const bool readingStable = bootReadingStable_;
     const BatteryAvailability availability =
         readingStable ? BatteryAvailability::Available : BatteryAvailability::Settling;
 
@@ -203,7 +275,7 @@ void BatteryService::takeMeasurement() {
     snapshot_ = nextSnapshot;
     portEXIT_CRITICAL(&mux_);
 
-    nextSampleAtMs_ = now + kSampleIntervalMs;
+    nextSampleAtMs_ = now + (readingStable ? kSampleIntervalMs : kSettlingSampleIntervalMs);
 
     Serial.printf(
         "Battery service: raw=%umV battery=%umV percent=%u low=%d critical=%d stable=%d availability=%s.\n",

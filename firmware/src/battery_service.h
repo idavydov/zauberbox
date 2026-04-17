@@ -46,7 +46,8 @@ class BatteryService {
     BatterySnapshot snapshot_ = {};
     float filteredBatteryVolts_ = 0.0F;
     bool hasFilteredBatteryVolts_ = false;
-    uint8_t consecutiveValidSamples_ = 0;
+    bool bootReadingStable_ = false;
+    uint8_t consecutiveSettledSamples_ = 0;
     uint32_t nextSampleAtMs_ = 0;
 };
 
