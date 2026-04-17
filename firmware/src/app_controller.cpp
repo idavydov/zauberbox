@@ -20,6 +20,7 @@ constexpr uint32_t kScanStartSpeakerHoldMs = 1500;
 constexpr uint32_t kScanStartPlaybackStartFallbackMs = 3000;
 constexpr uint32_t kWifiPortalResumeFallbackMs = 5000;
 constexpr uint32_t kIdleSleepTimeoutMs = 10000;
+constexpr uint32_t kPausedSleepTimeoutMs = 300000;
 constexpr uint32_t kBootWakeButtonSuppressionMs = 1500;
 constexpr char kWifiMdnsHostname[] = "zauberbox";
 
@@ -29,6 +30,8 @@ const char *sleepTriggerName(AppController::SleepTrigger trigger) {
             return "none";
         case AppController::SleepTrigger::IdleTimeout:
             return "idle_timeout";
+        case AppController::SleepTrigger::PausedTimeout:
+            return "paused_timeout";
         case AppController::SleepTrigger::CriticalBattery:
             return "critical_battery";
     }
@@ -497,6 +500,7 @@ void AppController::handleBatteryPowerPolicy() {
     if (state != lastObservedState_) {
         lastObservedState_ = state;
         idleEnteredAtMs_ = state == AppState::Idle ? millis() : 0;
+        pausedEnteredAtMs_ = state == AppState::Paused ? millis() : 0;
     }
 
     if (state == AppState::Sleep || state == AppState::Resetting || state == AppState::Boot) {
@@ -510,6 +514,16 @@ void AppController::handleBatteryPowerPolicy() {
 
     if (shouldEnterCriticalBatterySleep(battery, state)) {
         requestSleep(SleepTrigger::CriticalBattery, &battery);
+        return;
+    }
+
+    if (state == AppState::Paused) {
+        if (pausedEnteredAtMs_ == 0) {
+            pausedEnteredAtMs_ = millis();
+        }
+        if (millis() - pausedEnteredAtMs_ >= kPausedSleepTimeoutMs) {
+            requestSleep(SleepTrigger::PausedTimeout, &battery);
+        }
         return;
     }
 

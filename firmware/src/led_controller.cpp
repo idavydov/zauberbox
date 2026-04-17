@@ -11,6 +11,8 @@ constexpr uint32_t kLowBatteryBlinkPeriodMs = 4000;
 constexpr uint32_t kLowBatteryBlinkOnMs = 180;
 constexpr uint8_t kBatteryHighPercentThreshold = 90;
 constexpr uint32_t kPlayingRainbowWindowMs = 10000;
+constexpr uint32_t kSparsePausedPulsePeriodMs = 3000;
+constexpr uint32_t kSparsePausedPulseOnMs = 140;
 
 bool shouldShowLowBatteryBlink(AppState state, const BatterySnapshot &battery) {
     if (state == AppState::Boot ||
@@ -38,6 +40,10 @@ bool shouldLimitPlayingRainbow(const BatterySnapshot &battery) {
            battery.readingStable &&
            battery.availability == BatteryAvailability::Available &&
            battery.percent < kBatteryHighPercentThreshold;
+}
+
+bool shouldUseSparsePausedAnimation(const BatterySnapshot &battery) {
+    return shouldLimitPlayingRainbow(battery);
 }
 
 } // namespace
@@ -169,6 +175,17 @@ void LedController::runTask() {
                 break;
             }
             case AppState::Paused: {
+                if (shouldUseSparsePausedAnimation(battery)) {
+                    const bool on = (millis() % kSparsePausedPulsePeriodMs) < kSparsePausedPulseOnMs;
+                    const uint32_t color = on ? ring_.Color(0, 10, 12) : 0;
+                    for (int i = 0; i < kLedCount; i++) {
+                        ring_.setPixelColor(i, color);
+                    }
+                    ring_.show();
+                    vTaskDelay(pdMS_TO_TICKS(60));
+                    break;
+                }
+
                 const bool on = (millis() / 400) % 2 == 0;
                 const uint32_t color = on ? ring_.Color(0, 18, 24) : ring_.Color(0, 4, 6);
                 for (int i = 0; i < kLedCount; i++) {

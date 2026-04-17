@@ -15,6 +15,7 @@ class AppController {
     enum class SleepTrigger : uint8_t {
         None,
         IdleTimeout,
+        PausedTimeout,
         CriticalBattery,
     };
 
@@ -68,6 +69,7 @@ class AppController {
     uint32_t uiSoundMuteBlockUntilMs_ = 0;
     AppState lastObservedState_ = AppState::Boot;
     uint32_t idleEnteredAtMs_ = 0;
+    uint32_t pausedEnteredAtMs_ = 0;
     SleepTrigger sleepTrigger_ = SleepTrigger::None;
     bool suppressBootWakeButtonCycle_ = false;
     uint32_t bootWakeButtonSuppressionUntilMs_ = 0;
