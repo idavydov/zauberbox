@@ -9,6 +9,26 @@ body {
     flex-direction: column;
 }
 
+.rainbow {
+  background: linear-gradient(
+    to right,
+    #8b0000,
+    #d2691e,
+    #b8860b,
+    #006400,
+    #00008b,
+    #4b0082,
+    #301934
+  );
+
+  -webkit-background-clip: text;
+  background-clip: text;
+
+  color: transparent;
+
+  font-weight: bold;
+}
+
 /* Dashboard Styles */
 .nav-battery {
     align-self: center;

@@ -1195,7 +1195,7 @@ function render() {
 		const batteryDetail = state.deviceStatusError ? `title="${escapeHtml(state.deviceStatusError)}"` : '';
         const batteryIcon = ICONS[batteryIconName()];
 
-        navLeft.innerHTML = `<li><strong>Zauberbox</strong></li>`;
+        navLeft.innerHTML = `<li><strong class="rainbow">Zauberbox</strong></li>`;
         navRight.innerHTML = `
             <li class="nav-battery ${batteryState}" ${batteryDetail}>
                 <span class="nav-battery-icon" aria-hidden="true">${batteryIcon}</span>
