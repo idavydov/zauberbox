@@ -544,10 +544,12 @@ void WebServerService::handleListAlbums() {
                         (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png"))) {
                         coverPath = String("/api/file?path=") + urlEncode(albumName) + "&name=" + urlEncode(entryName);
                     }
-                    if (firstAudio.isEmpty() &&
-                        (lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".flac") ||
+                    if ((lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".flac") ||
                          lower.endsWith(".m4a") || lower.endsWith(".aac") || lower.endsWith(".ogg"))) {
-                        firstAudio = entryName;
+                        if (firstAudio.isEmpty() ||
+                            firstAudio.compareTo(entryName) >= 1) {
+                          firstAudio = entryName;
+                        }
                     }
                 }
                 entry.close();
