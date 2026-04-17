@@ -49,6 +49,16 @@ body {
     opacity: 0.7;
 }
 
+.nav-dropdown summary::after {
+    display: none !important;
+}
+.nav-dropdown summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0;
+}
+
 .dir-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -404,8 +414,14 @@ body {
 }
 
 /* Utilities */
-.header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+.header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
 .header-row h2 { margin: 0; flex: 1; font-size: 1.5rem; }
+.select-btn {
+    margin-bottom: 0;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    width: auto;
+}
 .action-icon {
     margin-left: 12px;
     cursor: pointer;

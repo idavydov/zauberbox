@@ -50,15 +50,18 @@ const MOCK_DATA = [
 ];
 
 const ICONS = {
-    music: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
-    edit: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
-    trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`,
-    plus: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
-    back: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`,
-    image: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
-    file: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`,
-    download: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
-    check: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+    music: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-music-icon lucide-music"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+    edit: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-pen-icon lucide-square-pen"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>`,
+    trash: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash2-icon lucide-trash-2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+    addFolder: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-plus-icon lucide-folder-plus"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`,
+    addFile: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-plus-icon lucide-file-plus"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M9 15h6"/><path d="M12 18v-6"/></svg>`,
+    back: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>`,
+    image: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-icon lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`,
+    file: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/></svg>`,
+    download: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download-icon lucide-download"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>`,
+    check: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-icon lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`,
+    menu: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu-icon lucide-menu"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>`,
+    info: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info-icon lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
     batteryFull: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-full-icon lucide-battery-full"><path d="M10 10v4"/><path d="M14 10v4"/><path d="M22 14v-4"/><path d="M6 10v4"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`,
     batteryMedium: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-medium-icon lucide-battery-medium"><path d="M10 14v-4"/><path d="M22 14v-4"/><path d="M6 14v-4"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`,
     batteryLow: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-low-icon lucide-battery-low"><path d="M22 14v-4"/><path d="M6 14v-4"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`,
@@ -534,7 +537,7 @@ async function refreshDebugLogs() {
 function openDebug(push = true) {
     if (push) {
         const currentHash = window.location.hash || '#/';
-        if (!currentHash.startsWith('#/debug')) {
+        if (!currentHash.startsWith('#/debug') && !currentHash.startsWith('#/software')) {
             debugReturnHash = currentHash;
         }
         window.location.hash = '/debug';
@@ -547,10 +550,32 @@ function openDebug(push = true) {
     render();
 }
 
+function openSoftware(push = true) {
+    if (push) {
+        const currentHash = window.location.hash || '#/';
+        if (!currentHash.startsWith('#/debug') && !currentHash.startsWith('#/software')) {
+            debugReturnHash = currentHash;
+        }
+        window.location.hash = '/software';
+        return;
+    }
+
+    leaveDebugView();
+    state.view = 'software';
+    state.loading = false;
+    render();
+}
+
+function closeDropdowns() {
+    document.querySelectorAll('details.dropdown[open]').forEach(el => {
+        el.removeAttribute('open');
+    });
+}
+
 async function openDebugCamera(push = true) {
     if (push) {
         const currentHash = window.location.hash || '#/';
-        if (!currentHash.startsWith('#/debug')) {
+        if (!currentHash.startsWith('#/debug') && !currentHash.startsWith('#/software')) {
             debugReturnHash = currentHash;
         }
         window.location.hash = '/debug/camera';
@@ -581,7 +606,7 @@ async function openDebugCamera(push = true) {
 function openDebugLogs(push = true) {
     if (push) {
         const currentHash = window.location.hash || '#/';
-        if (!currentHash.startsWith('#/debug')) {
+        if (!currentHash.startsWith('#/debug') && !currentHash.startsWith('#/software')) {
             debugReturnHash = currentHash;
         }
         window.location.hash = '/debug/logs';
@@ -602,7 +627,7 @@ function leaveDebugMenu() {
         window.location.hash = '/debug';
         return;
     }
-    const targetHash = debugReturnHash && debugReturnHash !== '#/debug'
+    const targetHash = debugReturnHash && debugReturnHash !== '#/debug' && debugReturnHash !== '#/software'
         ? debugReturnHash
         : '#/';
     window.location.hash = targetHash.startsWith('#')
@@ -618,6 +643,8 @@ async function navigate() {
         openDebugLogs(false);
     } else if (hash === '#/debug') {
         openDebug(false);
+    } else if (hash === '#/software') {
+        openSoftware(false);
     } else if (hash.startsWith('#/dir/')) {
         const path = decodeURIComponent(hash.substring(6));
         await enterDirectory(path, false);
@@ -1176,11 +1203,25 @@ function render() {
                 <span class="nav-battery-icon" aria-hidden="true">${batteryIcon}</span>
                 <span class="nav-battery-text">${escapeHtml(batterySummary)}</span>
             </li>
-            <li><button class="${state.selectionMode ? 'primary' : 'contrast outline'}" style="padding: 4px 8px;" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select'}</button></li>
+            <li>
+                <details class="dropdown nav-dropdown" dir="rtl">
+                    <summary class="contrast outline" style="padding: 4px 8px; list-style: none;">${ICONS.menu}</summary>
+                    <ul dir="ltr">
+                        <li><a href="#/debug" onclick="closeDropdowns()">Debug Menu</a></li>
+                        <li><a href="#/software" onclick="closeDropdowns()">Software</a></li>
+                    </ul>
+                </details>
+            </li>
         `;
 
         let html = `<div class="${state.selectionMode ? 'selection-mode' : ''}">`;
-        html += `<h2>Directories</h2><div class="dir-grid">`;
+        html += `
+            <div class="header-row">
+                <h2>Directories</h2>
+                <button class="${state.selectionMode ? 'primary' : 'contrast outline'} select-btn" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select Folders'}</button>
+            </div>
+            <div class="dir-grid">
+        `;
         state.directories.forEach(dir => {
             const isSelected = state.selectedDirs.has(dir.name);
             html += `
@@ -1195,7 +1236,7 @@ function render() {
         if (!state.selectionMode) {
             html += `
                 <div class="dir-card add-card" onclick="handleMkdir()">
-                    ${ICONS.plus}
+                    ${ICONS.addFolder}
                     <span class="name">New Folder</span>
                 </div>
             `;
@@ -1211,6 +1252,31 @@ function render() {
             `;
         }
         app.innerHTML = html;
+    } else if (state.view === 'software') {
+        navLeft.innerHTML = `
+            <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
+            <li><strong>Software</strong></li>
+        `;
+        navRight.innerHTML = ``;
+
+        app.innerHTML = `
+            <section>
+                <article>
+                    <header><strong>Used Open Source Software</strong></header>
+                    <p>Zauberbox is built using these amazing open source projects:</p>
+                    <ul>
+                        <li><a href="https://picocss.com" target="_blank"><strong>Pico CSS</strong></a> (MIT) - Minimal design system for the web interface.</li>
+                        <li><a href="https://lucide.dev" target="_blank"><strong>Lucide Icons</strong></a> (ISC) - Beautiful & consistent icons.</li>
+                        <li><a href="https://github.com/davidshimjs/qrcodejs" target="_blank"><strong>qrcode.js</strong></a> (MIT) - QR code generation in the browser.</li>
+                        <li><a href="https://github.com/ayresnet/AyresWiFiManager" target="_blank"><strong>AyresWiFiManager</strong></a> (LGPL) - Captive portal and WiFi management.</li>
+                        <li><a href="https://github.com/dlbeer/quirc" target="_blank"><strong>quirc</strong></a> (ISC) - QR code decoder library used in firmware.</li>
+                    </ul>
+                    <footer>
+                        <small>Respecting licenses and supporting the community.</small>
+                    </footer>
+                </article>
+            </section>
+        `;
     } else if (state.view === 'debug-menu') {
         navLeft.innerHTML = `
             <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
@@ -1341,7 +1407,7 @@ function render() {
             <li><strong>${state.currentPath}</strong></li>
         `;
         navRight.innerHTML = `
-            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate Tile Image">${ICONS.image} Tile</button></li>
+            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button></li>
         `;
         
         let html = `
@@ -1403,7 +1469,7 @@ function render() {
         html += `
                         <label id="drop-zone" class="file-item upload-item${uploadInProgress ? ' disabled' : ''}" style="border-top: 1px solid var(--pico-muted-border-color);">
                             <input type="file" multiple ${uploadInProgress ? 'disabled' : ''} onchange="handleUpload(this.files, 'file')">
-                            <span class="file-icon">${ICONS.plus}</span>
+                            <span class="file-icon">${ICONS.addFile}</span>
                             <span class="file-name">${uploadInProgress ? 'Upload in progress...' : 'Click or Drag & Drop to Upload...'}</span>
                         </label>
                     </div>
