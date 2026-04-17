@@ -618,7 +618,8 @@ bool AppController::shouldEnterCriticalBatterySleep(const BatterySnapshot &batte
            state == AppState::Playing ||
            state == AppState::Paused ||
            state == AppState::QrScan ||
-           state == AppState::DebugCameraPreview;
+           state == AppState::DebugCameraPreview ||
+           state == AppState::WifiPortal;
 }
 
 void AppController::requestSleep(SleepTrigger trigger, const BatterySnapshot *battery) {
@@ -631,6 +632,13 @@ void AppController::requestSleep(SleepTrigger trigger, const BatterySnapshot *ba
     }
 
     sleepTrigger_ = trigger;
+
+    // Immediately disable heavy components to save power and clear blockers for handleSleepState()
+    webServerService_.stop();
+    wifiService_.disable();
+    (void)audioStopPlayback();
+    qrService_.endDebugPreview();
+
     if (battery) {
         Serial.printf("App controller: sleep requested (%s) at %umV (%u%%).\n",
                       sleepTriggerName(trigger),

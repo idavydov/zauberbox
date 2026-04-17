@@ -139,11 +139,24 @@ void WebServerService::update() {
     }
 }
 
+void WebServerService::stop() {
+    if (!running_) {
+        return;
+    }
+
+    server_.stop();
+    running_ = false;
+    Serial.println("Web server: stopped (forced).");
+}
+
 void WebServerService::startIfNeeded() {
     if (running_) {
         return;
     }
     if (WiFi.status() != WL_CONNECTED || appStateStore().wifiMode() != WifiMode::Connected) {
+        return;
+    }
+    if (appStateStore().current() == AppState::Sleep) {
         return;
     }
 
@@ -159,7 +172,15 @@ void WebServerService::stopIfNeeded() {
     if (!running_) {
         return;
     }
-    if (WiFi.status() == WL_CONNECTED && appStateStore().wifiMode() == WifiMode::Connected) {
+
+    bool shouldStop = false;
+    if (appStateStore().current() == AppState::Sleep) {
+        shouldStop = true;
+    } else if (WiFi.status() != WL_CONNECTED || appStateStore().wifiMode() != WifiMode::Connected) {
+        shouldStop = true;
+    }
+
+    if (!shouldStop) {
         return;
     }
 

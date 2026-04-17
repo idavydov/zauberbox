@@ -11,6 +11,7 @@ class WebServerService {
   public:
     void begin(MediaService *mediaService, QrService *qrService);
     void update();
+    void stop();
 
   private:
     void startIfNeeded();

@@ -37,12 +37,14 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
             return toState == AppState::Paused ||
                    toState == AppState::Idle ||
                    toState == AppState::QrScan ||
+                   toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Paused:
             return toState == AppState::Playing ||
                    toState == AppState::Idle ||
                    toState == AppState::QrScan ||
+                   toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Sleep:
