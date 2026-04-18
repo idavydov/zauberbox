@@ -1367,6 +1367,7 @@ function render() {
                     <ul>
                         <li><a href="https://picocss.com" target="_blank"><strong>Pico CSS</strong></a> (MIT) - Minimal design system for the web interface.</li>
                         <li><a href="https://lucide.dev" target="_blank"><strong>Lucide Icons</strong></a> (ISC) - Beautiful & consistent icons.</li>
+                        <li><a href="https://github.com/schreibfaul1/ESP32-audioI2S/" target="_blank"><strong>ESP32-audioI2S</strong></a> (GPL v3.0) - Audio player library.</li>
                         <li><a href="https://github.com/davidshimjs/qrcodejs" target="_blank"><strong>qrcode.js</strong></a> (MIT) - QR code generation in the browser.</li>
                         <li><a href="https://github.com/ayresnet/AyresWiFiManager" target="_blank"><strong>AyresWiFiManager</strong></a> (MIT) - Captive portal and WiFi management.</li>
                         <li><a href="https://github.com/dlbeer/quirc" target="_blank"><strong>quirc</strong></a> (ISC) - QR code decoder library used in firmware.</li>
