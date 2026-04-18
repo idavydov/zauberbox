@@ -11,7 +11,6 @@ enum class UiSound : uint8_t {
     ScanStart,
     WifiConnected,
     Error,
-    Sleep,
     Button,
     LowBattery,
 };
@@ -21,7 +20,6 @@ class MediaService {
     bool begin();
     void update();
 
-    bool playWifiConnectedSound();
     bool playUiSound(UiSound sound);
     bool playTransientUiSoundOverAlbum(UiSound sound);
 
@@ -35,16 +33,19 @@ class MediaService {
     bool ensureStorageMounted();
 
     bool isStorageReady() const;
+    bool isAlbumPlaying() const;
+    bool isTransientUiSoundActive() const;
 
   private:
     static void handlePlaybackFinishedStatic(AudioPlaybackEvent event);
     static const char *uiSoundPath(UiSound sound);
+    static uint16_t transientUiSoundUnmuteDelayMs(UiSound sound);
     static bool isSupportedAudioFile(const String &path);
 
     bool mountStorage();
     bool loadAlbumTracks(const char *albumId);
-    bool startCurrentTrack();
-    bool startCurrentTrackAt(uint32_t startTimeSeconds);
+    bool startCurrentTrack(bool muteUntilRunning = false);
+    bool startCurrentTrackAt(uint32_t startTimeSeconds, bool muteUntilRunning = false);
     void clearTransientUiSoundState();
     void resumeAfterTransientUiSound();
     void handlePlaybackFinished(AudioPlaybackEvent event);

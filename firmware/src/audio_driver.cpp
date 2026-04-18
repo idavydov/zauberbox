@@ -29,6 +29,7 @@ constexpr uint8_t kPlaybackVolume = 14;
 constexpr size_t kAudioCommandQueueDepth = 8;
 constexpr size_t kMaxAudioPathLength = 192;
 constexpr BaseType_t kAudioServiceCore = 1;
+constexpr uint16_t kTransientReplaceFadeOutMs = 35;
 
 enum class AudioCommandType : uint8_t {
     Enqueue,
@@ -42,6 +43,8 @@ enum class AudioCommandType : uint8_t {
 struct AudioPlaybackRequest {
     AudioStorage storage;
     int32_t startTimeSeconds;
+    bool muteUntilPlaybackStart;
+    uint16_t unmuteDelayMs;
     char path[kMaxAudioPathLength];
 };
 
@@ -229,13 +232,17 @@ void handleAudioInfo(Audio::msg_t msg) {
 void fillRequest(AudioPlaybackRequest *request,
                  AudioStorage storage,
                  const char *path,
-                 int32_t startTimeSeconds = -1) {
+                 int32_t startTimeSeconds = -1,
+                 bool muteUntilPlaybackStart = false,
+                 uint16_t unmuteDelayMs = 80) {
     if (!request) {
         return;
     }
 
     request->storage = storage;
     request->startTimeSeconds = startTimeSeconds;
+    request->muteUntilPlaybackStart = muteUntilPlaybackStart;
+    request->unmuteDelayMs = unmuteDelayMs;
     request->path[0] = '\0';
     if (!path) {
         return;
@@ -258,6 +265,41 @@ void audioServiceTask(void *pvParameters) {
     int32_t pendingSeekFilePosition = -1;
     uint32_t pendingSeekDeadlineMs = 0;
     uint32_t pendingSeekNextAttemptAtMs = 0;
+    bool pendingAudioUnmuteOnRunning = false;
+    uint32_t pendingAudioUnmuteAtMs = 0;
+    uint16_t pendingAudioUnmuteDelayMs = 80;
+    bool deferredMutedReplaceActive = false;
+    AudioPlaybackRequest deferredMutedReplaceRequest = {};
+    uint32_t deferredMutedReplaceAtMs = 0;
+    auto startRequest = [&](const AudioPlaybackRequest &request) {
+        gPlaybackPaused = false;
+        if (playRequest(request)) {
+            pendingSeekFilePosition = -1;
+            pendingSeekDeadlineMs = 0;
+            pendingSeekNextAttemptAtMs = 0;
+            gAwaitingNaturalPlaybackEnd = true;
+            pendingAudioUnmuteOnRunning = request.muteUntilPlaybackStart;
+            if (!request.muteUntilPlaybackStart) {
+                pendingAudioUnmuteAtMs = 0;
+                pendingAudioUnmuteDelayMs = 80;
+                gFilePlayer.setMute(false);
+            } else {
+                pendingAudioUnmuteDelayMs = request.unmuteDelayMs;
+                gFilePlayer.setMute(true);
+            }
+            return true;
+        }
+
+        pendingSeekFilePosition = -1;
+        pendingSeekDeadlineMs = 0;
+        pendingSeekNextAttemptAtMs = 0;
+        pendingAudioUnmuteOnRunning = false;
+        pendingAudioUnmuteAtMs = 0;
+        pendingAudioUnmuteDelayMs = 80;
+        gFilePlayer.setMute(false);
+        handlePlaybackEvent(AudioPlaybackEvent::Failed);
+        return false;
+    };
 
     while (true) {
         if (xQueueReceive(gAudioCommandQueue, &command, pdMS_TO_TICKS(1)) == pdPASS) {
@@ -267,15 +309,26 @@ void audioServiceTask(void *pvParameters) {
                     break;
                 case AudioCommandType::ReplaceQueue:
                     pendingRequests.clear();
-                    pendingRequests.push_back(command.request);
                     pendingSeekFilePosition = -1;
                     pendingSeekDeadlineMs = 0;
                     pendingSeekNextAttemptAtMs = 0;
-                    if (gFilePlayer.isRunning()) {
-                        gFilePlayer.stopSong();
+                    pendingAudioUnmuteOnRunning = false;
+                    pendingAudioUnmuteAtMs = 0;
+                    pendingAudioUnmuteDelayMs = command.request.unmuteDelayMs;
+                    deferredMutedReplaceActive = false;
+                    deferredMutedReplaceAtMs = 0;
+                    if (command.request.muteUntilPlaybackStart) {
+                        if (gFilePlayer.isRunning()) {
+                            gFilePlayer.setMute(true);
+                            deferredMutedReplaceRequest = command.request;
+                            deferredMutedReplaceActive = true;
+                            deferredMutedReplaceAtMs = millis() + kTransientReplaceFadeOutMs;
+                            gAwaitingNaturalPlaybackEnd = false;
+                            gPlaybackPaused = false;
+                            break;
+                        }
                     }
-                    gAwaitingNaturalPlaybackEnd = false;
-                    gPlaybackPaused = false;
+                    (void)startRequest(command.request);
                     break;
                 case AudioCommandType::SeekToFilePosition:
                     pendingSeekFilePosition = static_cast<int32_t>(command.seekFilePosition);
@@ -287,9 +340,15 @@ void audioServiceTask(void *pvParameters) {
                     pendingSeekFilePosition = -1;
                     pendingSeekDeadlineMs = 0;
                     pendingSeekNextAttemptAtMs = 0;
+                    pendingAudioUnmuteOnRunning = false;
+                    pendingAudioUnmuteAtMs = 0;
+                    pendingAudioUnmuteDelayMs = 80;
+                    deferredMutedReplaceActive = false;
+                    deferredMutedReplaceAtMs = 0;
                     if (gFilePlayer.isRunning()) {
                         gFilePlayer.stopSong();
                     }
+                    gFilePlayer.setMute(false);
                     gAwaitingNaturalPlaybackEnd = false;
                     gPlaybackPaused = false;
                     break;
@@ -321,6 +380,23 @@ void audioServiceTask(void *pvParameters) {
             gFilePlayer.loop();
         }
         const bool isRunning = gFilePlayer.isRunning();
+
+        if (deferredMutedReplaceActive &&
+            static_cast<int32_t>(millis() - deferredMutedReplaceAtMs) >= 0) {
+            deferredMutedReplaceActive = false;
+            (void)startRequest(deferredMutedReplaceRequest);
+        }
+
+        if (pendingAudioUnmuteOnRunning && isRunning) {
+            pendingAudioUnmuteOnRunning = false;
+            pendingAudioUnmuteAtMs = millis() + pendingAudioUnmuteDelayMs;
+        }
+
+        if (pendingAudioUnmuteAtMs != 0 &&
+            static_cast<int32_t>(millis() - pendingAudioUnmuteAtMs) >= 0) {
+            gFilePlayer.setMute(false);
+            pendingAudioUnmuteAtMs = 0;
+        }
 
         if (pendingSeekFilePosition >= 0) {
             const uint32_t now = millis();
@@ -357,18 +433,7 @@ void audioServiceTask(void *pvParameters) {
         if (!isRunning && !gPlaybackPaused && !pendingRequests.empty()) {
             const AudioPlaybackRequest nextRequest = pendingRequests.front();
             pendingRequests.pop_front();
-            gPlaybackPaused = false;
-            if (playRequest(nextRequest)) {
-                pendingSeekFilePosition = -1;
-                pendingSeekDeadlineMs = 0;
-                pendingSeekNextAttemptAtMs = 0;
-                gAwaitingNaturalPlaybackEnd = true;
-            } else {
-                pendingSeekFilePosition = -1;
-                pendingSeekDeadlineMs = 0;
-                pendingSeekNextAttemptAtMs = 0;
-                handlePlaybackEvent(AudioPlaybackEvent::Failed);
-            }
+            (void)startRequest(nextRequest);
         }
     }
 }
@@ -433,6 +498,22 @@ bool audioStartFile(AudioStorage storage, const char *path) {
     return audioStartFileAtTime(storage, path, static_cast<uint32_t>(-1));
 }
 
+bool audioStartFileMutedUntilRunning(AudioStorage storage, const char *path, uint16_t unmuteDelayMs) {
+    if (!path || path[0] == '\0') {
+        return false;
+    }
+    if (!audioInit()) {
+        return false;
+    }
+
+    AudioCommand command = {
+        .type = AudioCommandType::ReplaceQueue,
+        .request = {},
+    };
+    fillRequest(&command.request, storage, path, -1, true, unmuteDelayMs);
+    return queueCommand(command);
+}
+
 bool audioStartFileAtTime(AudioStorage storage, const char *path, uint32_t startTimeSeconds) {
     if (!path || path[0] == '\0') {
         return false;
@@ -448,7 +529,7 @@ bool audioStartFileAtTime(AudioStorage storage, const char *path, uint32_t start
     const int32_t fileStartTime = startTimeSeconds == static_cast<uint32_t>(-1)
         ? -1
         : static_cast<int32_t>(startTimeSeconds);
-    fillRequest(&command.request, storage, path, fileStartTime);
+    fillRequest(&command.request, storage, path, fileStartTime, false);
     return queueCommand(command);
 }
 

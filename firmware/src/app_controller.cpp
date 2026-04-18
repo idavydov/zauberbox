@@ -124,16 +124,7 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
 
     if (event.buttonId == ButtonId::Boot) {
         if (event.pressKind == ButtonPressKind::PressDown) {
-            if (queueMutedUiSound(UiSound::Button)) {
-                return;
-            }
-            if (mediaService_.playUiSound(UiSound::Button)) {
-                if (shouldMuteOutputInCurrentState()) {
-                    noteUiSoundQueued(kScanStartSpeakerHoldMs);
-                } else {
-                    noteUiSoundQueued();
-                }
-            }
+            (void)playUiSoundForCurrentState(UiSound::Button, kScanStartSpeakerHoldMs);
             return;
         }
         if (event.pressKind == ButtonPressKind::ShortPress) {
@@ -199,16 +190,7 @@ void AppController::handleWifiConnected() {
     } else {
         Serial.printf("App controller: mDNS start failed for %s.local\n", kWifiMdnsHostname);
     }
-    if (queueMutedUiSound(UiSound::WifiConnected)) {
-        return;
-    }
-    if (mediaService_.playWifiConnectedSound()) {
-        if (shouldMuteOutputInCurrentState()) {
-            noteUiSoundQueued(kScanStartSpeakerHoldMs);
-        } else {
-            noteUiSoundQueued();
-        }
-    }
+    (void)playUiSoundForCurrentState(UiSound::WifiConnected, kScanStartSpeakerHoldMs);
 }
 
 void AppController::handleWifiConnectionFailed(bool reopenPortal) {
@@ -289,6 +271,30 @@ bool AppController::queueMutedUiSound(UiSound sound) {
     pendingMutedUiSoundType_ = sound;
     pendingMutedUiSoundReadyAtMs_ = 1;
     speakerMuted_ = false;
+    return true;
+}
+
+bool AppController::playUiSoundForCurrentState(UiSound sound, uint32_t mutedHoldMs) {
+    if (mediaService_.isAlbumPlaying()) {
+        if (mediaService_.isTransientUiSoundActive()) {
+            return false;
+        }
+        return mediaService_.playTransientUiSoundOverAlbum(sound);
+    }
+
+    if (queueMutedUiSound(sound)) {
+        return true;
+    }
+
+    if (!mediaService_.playUiSound(sound)) {
+        return false;
+    }
+
+    if (shouldMuteOutputInCurrentState()) {
+        noteUiSoundQueued(mutedHoldMs);
+    } else {
+        noteUiSoundQueued();
+    }
     return true;
 }
 

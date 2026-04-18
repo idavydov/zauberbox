@@ -79,7 +79,8 @@ def build_ui_sounds(output_dir: Path) -> None:
     )
     button = _sequence(
         [
-            (1300.0, 22, 0.03, 0),
+            (1300.0, 45, 0.03, 15),
+            (1650.0, 55, 0.028, 0),
         ]
     )
     low_battery = _sequence(
