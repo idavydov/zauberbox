@@ -31,6 +31,7 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
         case AppState::DebugCameraPreview:
             return toState == AppState::QrScan ||
                    toState == AppState::Idle ||
+                   toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Playing:
@@ -56,6 +57,7 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
                    toState == AppState::DebugCameraPreview ||
                    toState == AppState::Playing ||
                    toState == AppState::Paused ||
+                   toState == AppState::Sleep ||
                    toState == AppState::Resetting;
         case AppState::Resetting:
             return false;
