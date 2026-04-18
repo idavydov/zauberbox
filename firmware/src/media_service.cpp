@@ -18,9 +18,8 @@ constexpr char kWifiConnectedSoundPath[] = "/wifi_connected.wav";
 constexpr char kErrorSoundPath[] = "/error.wav";
 constexpr char kButtonSoundPath[] = "/button.wav";
 constexpr char kLowBatterySoundPath[] = "/low_battery.wav";
-constexpr uint32_t kTransientUiResumeDelayMs = 350;
-constexpr uint16_t kShortTransientUiUnmuteDelayMs = 28;
-constexpr uint16_t kDefaultTransientUiUnmuteDelayMs = 80;
+constexpr uint32_t kTransientUiGapMs = 400;
+constexpr size_t kTransientUiQueueLimit = 4;
 constexpr char kSdMountPath[] = "/sdcard";
 constexpr uint32_t kPreviousTrackThresholdSeconds = 5;
 constexpr int kSdClkPin = 40;
@@ -54,6 +53,13 @@ void MediaService::update() {
         handlePlaybackFinished(static_cast<AudioPlaybackEvent>(eventValue));
     }
 
+    if (transientUiSoundActive_ &&
+        transientUiSoundStartReadyAtMs_ != 0 &&
+        static_cast<int32_t>(millis() - transientUiSoundStartReadyAtMs_) >= 0 &&
+        !audioIsRunning()) {
+        (void)startQueuedTransientUiSound();
+    }
+
     if (transientUiSoundRePausePending_ && audioIsRunning()) {
         transientUiSoundRePausePending_ = false;
         paused_ = true;
@@ -76,10 +82,6 @@ bool MediaService::isAlbumPlaying() const {
     return hasActiveAlbum() && !paused_;
 }
 
-bool MediaService::isTransientUiSoundActive() const {
-    return transientUiSoundActive_;
-}
-
 bool MediaService::playUiSound(UiSound sound) {
     const char *path = uiSoundPath(sound);
     if (!path) {
@@ -93,7 +95,7 @@ bool MediaService::playTransientUiSoundOverAlbum(UiSound sound) {
     if (!hasActiveAlbum()) {
         return false;
     }
-    if (transientUiSoundActive_) {
+    if (transientUiSoundQueue_.size() >= kTransientUiQueueLimit) {
         return false;
     }
 
@@ -102,29 +104,29 @@ bool MediaService::playTransientUiSoundOverAlbum(UiSound sound) {
         return false;
     }
 
-    if (paused_) {
-        transientUiSoundResumeAtSeconds_ = pausedAtSeconds_;
-        transientUiSoundResumeFilePosition_ = pausedFilePosition_;
-    } else {
-        transientUiSoundResumeAtSeconds_ = audioCurrentTimeSeconds();
-        transientUiSoundResumeFilePosition_ = audioCurrentFilePosition();
-    }
-    transientUiSoundResumePaused_ = paused_;
-    transientUiSoundActive_ = true;
-    if (!audioStartFileMutedUntilRunning(AudioStorage::LittleFs,
-                                         path,
-                                         transientUiSoundUnmuteDelayMs(sound))) {
-        transientUiSoundActive_ = false;
-        transientUiSoundResumePaused_ = false;
-        transientUiSoundResumeAtSeconds_ = 0;
-        transientUiSoundResumeFilePosition_ = 0;
-        return false;
+    if (!transientUiSoundActive_) {
+        if (paused_) {
+            transientUiSoundResumeAtSeconds_ = pausedAtSeconds_;
+            transientUiSoundResumeFilePosition_ = pausedFilePosition_;
+        } else {
+            transientUiSoundResumeAtSeconds_ = audioCurrentTimeSeconds();
+            transientUiSoundResumeFilePosition_ = audioCurrentFilePosition();
+        }
+        transientUiSoundResumePaused_ = paused_;
+        transientUiSoundActive_ = true;
+        transientUiSoundStartReadyAtMs_ = millis() + kTransientUiGapMs;
+        transientUiSoundResumeReadyAtMs_ = 0;
+        if (!paused_ && audioIsRunning()) {
+            (void)audioStopPlayback();
+        }
     }
 
-    Serial.printf("Media service: transient UI sound %s over track %u at %us\n",
+    transientUiSoundQueue_.push_back(sound);
+    Serial.printf("Media service: queued transient UI sound %s over track %u at %us (queued=%u)\n",
                   path,
                   static_cast<unsigned>(currentTrackIndex_ + 1),
-                  static_cast<unsigned>(transientUiSoundResumeAtSeconds_));
+                  static_cast<unsigned>(transientUiSoundResumeAtSeconds_),
+                  static_cast<unsigned>(transientUiSoundQueue_.size()));
     return true;
 }
 
@@ -289,20 +291,6 @@ const char *MediaService::uiSoundPath(UiSound sound) {
     return nullptr;
 }
 
-uint16_t MediaService::transientUiSoundUnmuteDelayMs(UiSound sound) {
-    switch (sound) {
-        case UiSound::Button:
-        case UiSound::WifiConnected:
-            return kShortTransientUiUnmuteDelayMs;
-        case UiSound::ScanStart:
-        case UiSound::Error:
-        case UiSound::LowBattery:
-            return kDefaultTransientUiUnmuteDelayMs;
-    }
-
-    return kDefaultTransientUiUnmuteDelayMs;
-}
-
 bool MediaService::isSupportedAudioFile(const String &path) {
     static constexpr const char *kSupportedExtensions[] = {
         ".aac",
@@ -448,21 +436,57 @@ void MediaService::clearTransientUiSoundState() {
     transientUiSoundRePausePending_ = false;
     transientUiSoundResumeAtSeconds_ = 0;
     transientUiSoundResumeFilePosition_ = 0;
+    transientUiSoundStartReadyAtMs_ = 0;
     transientUiSoundResumeReadyAtMs_ = 0;
+    transientUiSoundQueue_.clear();
     // We don't clear pausedAtSeconds_/pausedFilePosition_ here as they are owned by the persistent pause state
+}
+
+bool MediaService::startQueuedTransientUiSound() {
+    if (!transientUiSoundActive_ || transientUiSoundQueue_.empty()) {
+        return false;
+    }
+
+    const UiSound sound = transientUiSoundQueue_.front();
+    transientUiSoundQueue_.pop_front();
+    transientUiSoundStartReadyAtMs_ = 0;
+
+    const char *path = uiSoundPath(sound);
+    if (!path) {
+        if (!transientUiSoundQueue_.empty()) {
+            transientUiSoundStartReadyAtMs_ = millis() + kTransientUiGapMs;
+        } else {
+            transientUiSoundResumeReadyAtMs_ = millis() + kTransientUiGapMs;
+        }
+        return false;
+    }
+
+    if (audioStartFile(AudioStorage::LittleFs, path)) {
+        Serial.printf("Media service: transient UI sound started: %s\n", path);
+        return true;
+    }
+
+    Serial.printf("Media service: failed to start transient UI sound: %s\n", path);
+    if (!transientUiSoundQueue_.empty()) {
+        transientUiSoundStartReadyAtMs_ = millis() + kTransientUiGapMs;
+    } else {
+        transientUiSoundResumeReadyAtMs_ = millis() + kTransientUiGapMs;
+    }
+    return false;
 }
 
 void MediaService::resumeAfterTransientUiSound() {
     const bool resumePaused = transientUiSoundResumePaused_;
     const uint32_t resumeAtSeconds = transientUiSoundResumeAtSeconds_;
     const uint32_t resumeFilePosition = transientUiSoundResumeFilePosition_;
-    transientUiSoundResumeReadyAtMs_ = 0;
-    transientUiSoundResumePaused_ = false;
-    transientUiSoundResumeAtSeconds_ = 0;
-    transientUiSoundResumeFilePosition_ = 0;
-    transientUiSoundActive_ = false;
+    const bool shouldResume = albumActive_ && currentTrackIndex_ < trackPaths_.size();
+    clearTransientUiSoundState();
 
-    if (startCurrentTrackAt(resumeAtSeconds, true)) {
+    if (!shouldResume) {
+        return;
+    }
+
+    if (startCurrentTrackAt(resumeAtSeconds, false)) {
         if (resumeFilePosition > 0) {
             (void)audioSeekToFilePosition(resumeFilePosition);
             Serial.printf("Media service: restoring track %u to file position %lu (time %us)\n",
@@ -482,7 +506,11 @@ void MediaService::resumeAfterTransientUiSound() {
 
 void MediaService::handlePlaybackFinished(AudioPlaybackEvent event) {
     if (transientUiSoundActive_) {
-        transientUiSoundResumeReadyAtMs_ = millis() + kTransientUiResumeDelayMs;
+        if (!transientUiSoundQueue_.empty()) {
+            transientUiSoundStartReadyAtMs_ = millis() + kTransientUiGapMs;
+        } else {
+            transientUiSoundResumeReadyAtMs_ = millis() + kTransientUiGapMs;
+        }
         return;
     }
 

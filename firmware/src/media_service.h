@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include <atomic>
+#include <deque>
 #include <vector>
 
 #include "audio_driver.h"
@@ -35,13 +36,12 @@ class MediaService {
     bool isStorageReady() const;
     bool hasActiveAlbum() const;
     bool isAlbumPlaying() const;
-    bool isTransientUiSoundActive() const;
 
   private:
     static void handlePlaybackFinishedStatic(AudioPlaybackEvent event);
     static const char *uiSoundPath(UiSound sound);
-    static uint16_t transientUiSoundUnmuteDelayMs(UiSound sound);
     static bool isSupportedAudioFile(const String &path);
+    bool startQueuedTransientUiSound();
 
     bool mountStorage();
     bool loadAlbumTracks(const char *albumId);
@@ -67,5 +67,7 @@ class MediaService {
     bool transientUiSoundRePausePending_ = false;
     uint32_t transientUiSoundResumeAtSeconds_ = 0;
     uint32_t transientUiSoundResumeFilePosition_ = 0;
+    uint32_t transientUiSoundStartReadyAtMs_ = 0;
     uint32_t transientUiSoundResumeReadyAtMs_ = 0;
+    std::deque<UiSound> transientUiSoundQueue_;
 };
