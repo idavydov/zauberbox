@@ -33,6 +33,7 @@ class MediaService {
     bool ensureStorageMounted();
 
     bool isStorageReady() const;
+    bool hasActiveAlbum() const;
     bool isAlbumPlaying() const;
     bool isTransientUiSoundActive() const;
 
@@ -59,7 +60,11 @@ class MediaService {
     bool storageReady_ = false;
     bool albumActive_ = false;
     bool paused_ = false;
+    uint32_t pausedAtSeconds_ = 0;
+    uint32_t pausedFilePosition_ = 0;
     bool transientUiSoundActive_ = false;
+    bool transientUiSoundResumePaused_ = false;
+    bool transientUiSoundRePausePending_ = false;
     uint32_t transientUiSoundResumeAtSeconds_ = 0;
     uint32_t transientUiSoundResumeFilePosition_ = 0;
     uint32_t transientUiSoundResumeReadyAtMs_ = 0;

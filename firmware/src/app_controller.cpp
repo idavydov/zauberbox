@@ -123,11 +123,8 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
     }
 
     if (event.buttonId == ButtonId::Boot) {
-        if (event.pressKind == ButtonPressKind::PressDown) {
-            (void)playUiSoundForCurrentState(UiSound::Button, kScanStartSpeakerHoldMs);
-            return;
-        }
         if (event.pressKind == ButtonPressKind::ShortPress) {
+            (void)playUiSoundForCurrentState(UiSound::Button, kScanStartSpeakerHoldMs);
             Serial.printf("App controller: BOOT button in state %s, Wi-Fi %s\n",
                           AppStateStore::stateName(appStateStore().current()),
                           wifiService_.isEnabled() ? "enabled" : "disabled");
@@ -184,29 +181,17 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
 }
 
 void AppController::handleWifiConnected() {
+    (void)playUiSoundForCurrentState(UiSound::WifiConnected, kScanStartSpeakerHoldMs);
     MDNS.end();
     if (MDNS.begin(kWifiMdnsHostname)) {
         Serial.printf("App controller: mDNS started at http://%s.local\n", kWifiMdnsHostname);
     } else {
         Serial.printf("App controller: mDNS start failed for %s.local\n", kWifiMdnsHostname);
     }
-    (void)playUiSoundForCurrentState(UiSound::WifiConnected, kScanStartSpeakerHoldMs);
 }
 
 void AppController::handleWifiConnectionFailed(bool reopenPortal) {
-    if (queueMutedUiSound(UiSound::Error)) {
-        resumeWifiPortalAfterError_ = reopenPortal;
-        wifiFailureSoundRunningSeen_ = false;
-        wifiPortalResumeFallbackAtMs_ = millis() + kWifiPortalResumeFallbackMs;
-        return;
-    }
-    if (mediaService_.playUiSound(UiSound::Error)) {
-        if (shouldMuteOutputInCurrentState()) {
-            noteUiSoundQueued(kScanStartSpeakerHoldMs);
-        } else {
-            noteUiSoundQueued();
-        }
-    }
+    (void)playUiSoundForCurrentState(UiSound::Error, kScanStartSpeakerHoldMs);
     resumeWifiPortalAfterError_ = reopenPortal;
     wifiFailureSoundRunningSeen_ = false;
     wifiPortalResumeFallbackAtMs_ = millis() + kWifiPortalResumeFallbackMs;
@@ -275,11 +260,15 @@ bool AppController::queueMutedUiSound(UiSound sound) {
 }
 
 bool AppController::playUiSoundForCurrentState(UiSound sound, uint32_t mutedHoldMs) {
-    if (mediaService_.isAlbumPlaying()) {
+    if (mediaService_.hasActiveAlbum()) {
         if (mediaService_.isTransientUiSoundActive()) {
             return false;
         }
-        return mediaService_.playTransientUiSoundOverAlbum(sound);
+        const bool success = mediaService_.playTransientUiSoundOverAlbum(sound);
+        if (success && shouldMuteOutputInCurrentState()) {
+            noteUiSoundQueued(mutedHoldMs);
+        }
+        return success;
     }
 
     if (queueMutedUiSound(sound)) {

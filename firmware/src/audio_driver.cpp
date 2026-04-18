@@ -400,7 +400,7 @@ void audioServiceTask(void *pvParameters) {
 
         if (pendingSeekFilePosition >= 0) {
             const uint32_t now = millis();
-            if (!isRunning || gPlaybackPaused) {
+            if (!isRunning) {
                 if (pendingSeekDeadlineMs != 0 &&
                     static_cast<int32_t>(now - pendingSeekDeadlineMs) >= 0) {
                     pendingSeekFilePosition = -1;
@@ -413,7 +413,7 @@ void audioServiceTask(void *pvParameters) {
                     pendingSeekFilePosition = -1;
                     pendingSeekDeadlineMs = 0;
                     pendingSeekNextAttemptAtMs = 0;
-                } else if (pendingSeekDeadlineMs != 0 &&
+                } else if (!gPlaybackPaused && pendingSeekDeadlineMs != 0 &&
                            static_cast<int32_t>(now - pendingSeekDeadlineMs) >= 0) {
                     Serial.printf("Audio file-position seek timed out at pos=%ld\n",
                                   static_cast<long>(pendingSeekFilePosition));
@@ -498,7 +498,7 @@ bool audioStartFile(AudioStorage storage, const char *path) {
     return audioStartFileAtTime(storage, path, static_cast<uint32_t>(-1));
 }
 
-bool audioStartFileMutedUntilRunning(AudioStorage storage, const char *path, uint16_t unmuteDelayMs) {
+bool audioStartFileMutedUntilRunning(AudioStorage storage, const char *path, uint32_t startTimeSeconds, uint16_t unmuteDelayMs) {
     if (!path || path[0] == '\0') {
         return false;
     }
@@ -510,7 +510,10 @@ bool audioStartFileMutedUntilRunning(AudioStorage storage, const char *path, uin
         .type = AudioCommandType::ReplaceQueue,
         .request = {},
     };
-    fillRequest(&command.request, storage, path, -1, true, unmuteDelayMs);
+    const int32_t fileStartTime = startTimeSeconds == static_cast<uint32_t>(-1)
+        ? -1
+        : static_cast<int32_t>(startTimeSeconds);
+    fillRequest(&command.request, storage, path, fileStartTime, true, unmuteDelayMs);
     return queueCommand(command);
 }
 

@@ -54,14 +54,26 @@ void MediaService::update() {
         handlePlaybackFinished(static_cast<AudioPlaybackEvent>(eventValue));
     }
 
+    if (transientUiSoundRePausePending_ && audioIsRunning()) {
+        transientUiSoundRePausePending_ = false;
+        paused_ = true;
+        // The track was already started at the pause position, so we just toggle the driver to pause
+        (void)audioTogglePause();
+        (void)appStateStore().transitionTo(AppState::Paused);
+    }
+
     if (transientUiSoundResumeReadyAtMs_ != 0 &&
         static_cast<int32_t>(millis() - transientUiSoundResumeReadyAtMs_) >= 0) {
         resumeAfterTransientUiSound();
     }
 }
 
+bool MediaService::hasActiveAlbum() const {
+    return albumActive_ && currentTrackIndex_ < trackPaths_.size();
+}
+
 bool MediaService::isAlbumPlaying() const {
-    return albumActive_ && !paused_ && currentTrackIndex_ < trackPaths_.size();
+    return hasActiveAlbum() && !paused_;
 }
 
 bool MediaService::isTransientUiSoundActive() const {
@@ -78,7 +90,7 @@ bool MediaService::playUiSound(UiSound sound) {
 }
 
 bool MediaService::playTransientUiSoundOverAlbum(UiSound sound) {
-    if (!albumActive_ || paused_ || currentTrackIndex_ >= trackPaths_.size()) {
+    if (!hasActiveAlbum()) {
         return false;
     }
     if (transientUiSoundActive_) {
@@ -90,13 +102,20 @@ bool MediaService::playTransientUiSoundOverAlbum(UiSound sound) {
         return false;
     }
 
-    transientUiSoundResumeAtSeconds_ = audioCurrentTimeSeconds();
-    transientUiSoundResumeFilePosition_ = audioCurrentFilePosition();
+    if (paused_) {
+        transientUiSoundResumeAtSeconds_ = pausedAtSeconds_;
+        transientUiSoundResumeFilePosition_ = pausedFilePosition_;
+    } else {
+        transientUiSoundResumeAtSeconds_ = audioCurrentTimeSeconds();
+        transientUiSoundResumeFilePosition_ = audioCurrentFilePosition();
+    }
+    transientUiSoundResumePaused_ = paused_;
     transientUiSoundActive_ = true;
     if (!audioStartFileMutedUntilRunning(AudioStorage::LittleFs,
                                          path,
                                          transientUiSoundUnmuteDelayMs(sound))) {
         transientUiSoundActive_ = false;
+        transientUiSoundResumePaused_ = false;
         transientUiSoundResumeAtSeconds_ = 0;
         transientUiSoundResumeFilePosition_ = 0;
         return false;
@@ -187,12 +206,28 @@ bool MediaService::togglePause() {
     if (!albumActive_) {
         return false;
     }
-    if (!audioTogglePause()) {
-        return false;
+
+    if (paused_) {
+        // Resuming: start track at saved position
+        if (!startCurrentTrackAt(pausedAtSeconds_, false)) {
+            return false;
+        }
+        if (pausedFilePosition_ > 0) {
+            (void)audioSeekToFilePosition(pausedFilePosition_);
+        }
+        paused_ = false;
+        pausedAtSeconds_ = 0;
+        pausedFilePosition_ = 0;
+        (void)appStateStore().transitionTo(AppState::Playing);
+        return true;
     }
 
-    paused_ = !paused_;
-    appStateStore().transitionTo(paused_ ? AppState::Paused : AppState::Playing);
+    // Pausing: capture position and stop playback
+    pausedAtSeconds_ = audioCurrentTimeSeconds();
+    pausedFilePosition_ = audioCurrentFilePosition();
+    (void)audioStopPlayback();
+    paused_ = true;
+    (void)appStateStore().transitionTo(AppState::Paused);
     return true;
 }
 
@@ -380,10 +415,8 @@ bool MediaService::startCurrentTrackAt(uint32_t startTimeSeconds, bool muteUntil
 
     const String &path = trackPaths_[currentTrackIndex_];
     bool started = false;
-    if (startTimeSeconds == static_cast<uint32_t>(-1)) {
-        started = muteUntilRunning
-            ? audioStartFileMutedUntilRunning(AudioStorage::SdCard, path.c_str())
-            : audioStartFile(AudioStorage::SdCard, path.c_str());
+    if (muteUntilRunning) {
+        started = audioStartFileMutedUntilRunning(AudioStorage::SdCard, path.c_str(), startTimeSeconds);
     } else {
         started = audioStartFileAtTime(AudioStorage::SdCard, path.c_str(), startTimeSeconds);
     }
@@ -411,26 +444,34 @@ bool MediaService::startCurrentTrackAt(uint32_t startTimeSeconds, bool muteUntil
 
 void MediaService::clearTransientUiSoundState() {
     transientUiSoundActive_ = false;
+    transientUiSoundResumePaused_ = false;
+    transientUiSoundRePausePending_ = false;
     transientUiSoundResumeAtSeconds_ = 0;
     transientUiSoundResumeFilePosition_ = 0;
     transientUiSoundResumeReadyAtMs_ = 0;
+    // We don't clear pausedAtSeconds_/pausedFilePosition_ here as they are owned by the persistent pause state
 }
 
 void MediaService::resumeAfterTransientUiSound() {
+    const bool resumePaused = transientUiSoundResumePaused_;
     const uint32_t resumeAtSeconds = transientUiSoundResumeAtSeconds_;
     const uint32_t resumeFilePosition = transientUiSoundResumeFilePosition_;
     transientUiSoundResumeReadyAtMs_ = 0;
+    transientUiSoundResumePaused_ = false;
     transientUiSoundResumeAtSeconds_ = 0;
     transientUiSoundResumeFilePosition_ = 0;
     transientUiSoundActive_ = false;
 
-    if (startCurrentTrack(true)) {
+    if (startCurrentTrackAt(resumeAtSeconds, true)) {
         if (resumeFilePosition > 0) {
             (void)audioSeekToFilePosition(resumeFilePosition);
             Serial.printf("Media service: restoring track %u to file position %lu (time %us)\n",
                           static_cast<unsigned>(currentTrackIndex_ + 1),
                           static_cast<unsigned long>(resumeFilePosition),
                           static_cast<unsigned>(resumeAtSeconds));
+        }
+        if (resumePaused) {
+            transientUiSoundRePausePending_ = true;
         }
         return;
     }
