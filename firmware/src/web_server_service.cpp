@@ -923,10 +923,16 @@ void WebServerService::handleDebugCameraFrame() {
         return;
     }
 
-    const bool applyKernel = server_.arg("kernel") == "1";
+    int transformIndex = -1;
+    if (server_.hasArg("transform")) {
+        transformIndex = server_.arg("transform").toInt();
+    } else if (server_.arg("kernel") == "1") {
+        transformIndex = 0; // Legacy support: default to first transform if kernel=1
+    }
+
     std::vector<uint8_t> jpegData;
     String errorMessage;
-    if (!qrService_->captureDebugJpeg(&jpegData, applyKernel, &errorMessage)) {
+    if (!qrService_->captureDebugJpeg(&jpegData, transformIndex, &errorMessage)) {
         const bool busy =
             errorMessage.startsWith("Preview unavailable while QR scanning") ||
             errorMessage.startsWith("Preview unavailable while audio");

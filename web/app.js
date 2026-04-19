@@ -22,7 +22,7 @@ let state = {
     debugPreviewError: '',
     debugPreviewUpdatedAt: 0,
     debugPreviewSessionActive: false,
-    debugCameraKernel: false,
+    debugCameraTransformIndex: -1,
     debugLogsText: '',
     debugLogsLoading: false,
     debugLogsError: '',
@@ -533,8 +533,8 @@ function applyCustomDebugBatteryOverride(event) {
     return false;
 }
 
-function toggleDebugCameraKernel() {
-    state.debugCameraKernel = !state.debugCameraKernel;
+function setDebugCameraTransform(index) {
+    state.debugCameraTransformIndex = index;
     state.debugPreviewError = '';
     if (state.view === 'debug-camera' && state.debugPreviewSessionActive) {
         stopDebugPreview();
@@ -556,8 +556,8 @@ async function refreshDebugPreview() {
     const controller = new AbortController();
     debugPreviewAbortController = controller;
     try {
-        const kernelParam = state.debugCameraKernel ? '&kernel=1' : '';
-        const response = await fetch(`${API_BASE}/debug/camera-frame?ts=${Date.now()}${kernelParam}`, {
+        const transformParam = state.debugCameraTransformIndex >= 0 ? `&transform=${state.debugCameraTransformIndex}` : '';
+        const response = await fetch(`${API_BASE}/debug/camera-frame?ts=${Date.now()}${transformParam}`, {
             cache: 'no-store',
             signal: controller.signal
         });
@@ -1519,11 +1519,17 @@ function render() {
                             <strong>Camera Preview</strong>
                             <p>Single-frame snapshots converted on the device.</p>
                         </div>
-                        <label style="margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; cursor: pointer;">
-                            <input type="checkbox" ${state.debugCameraKernel ? 'checked' : ''} onchange="toggleDebugCameraKernel()" style="margin: 0;">
-                            Kernel Cross 7
-                        </label>
                     </header>
+                    
+                    <div class="debug-controls">
+                        <label>Pre-processing:</label>
+                        <div class="debug-radio-group">
+                            <label><input type="radio" name="transform" value="-1" ${state.debugCameraTransformIndex === -1 ? 'checked' : ''} onchange="setDebugCameraTransform(-1)"> None</label>
+                            <label><input type="radio" name="transform" value="0" ${state.debugCameraTransformIndex === 0 ? 'checked' : ''} onchange="setDebugCameraTransform(0)"> cw8 d1 o-32</label>
+                            <label><input type="radio" name="transform" value="1" ${state.debugCameraTransformIndex === 1 ? 'checked' : ''} onchange="setDebugCameraTransform(1)"> cw10 d2 o-64</label>
+                        </div>
+                    </div>
+
                     <div class="debug-frame-shell">
                         ${state.debugPreviewUrl
                             ? `<img class="debug-frame-image" src="${state.debugPreviewUrl}" alt="Camera preview frame">`

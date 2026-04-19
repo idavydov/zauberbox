@@ -20,7 +20,8 @@ class QrService {
     bool isScanning() const;
     bool beginDebugPreview(String *errorMessage = nullptr);
     void endDebugPreview();
-    bool captureDebugJpeg(std::vector<uint8_t> *jpegData, bool applyKernel = false, String *errorMessage = nullptr);
+    bool captureDebugJpeg(std::vector<uint8_t> *jpegData, int transformIndex, String *errorMessage = nullptr);
+
 
   private:
     static bool parseAlbumId(const char *payload, String *albumId);

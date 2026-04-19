@@ -486,7 +486,7 @@ void QrService::releaseDebugPreviewScratch() {
     debugPreviewScratchSize_ = 0;
 }
 
-bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, bool applyKernel, String *errorMessage) {
+bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, int transformIndex, String *errorMessage) {
     if (!jpegData) {
         if (errorMessage) {
             *errorMessage = "Debug preview buffer missing";
@@ -540,14 +540,36 @@ bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, bool applyKerne
         jpegBuffer = frameBuffer->buf;
         jpegSize = frameBuffer->len;
         ok = true;
-    } else if (applyKernel && frameBuffer->format == PIXFORMAT_GRAYSCALE) {
+    } else if (transformIndex >= 0 && frameBuffer->format == PIXFORMAT_GRAYSCALE) {
         const size_t grayscaleSize =
             static_cast<size_t>(frameBuffer->width) * static_cast<size_t>(frameBuffer->height);
         if (ensureDebugPreviewScratch(grayscaleSize)) {
-            ESP32QRCodeReader::applyCrossSharpen7(frameBuffer->buf,
-                                                 debugPreviewScratch_,
-                                                 frameBuffer->width,
-                                                 frameBuffer->height);
+            struct Transform {
+                int cw;
+                int div;
+                int off;
+            };
+            static const Transform kTransforms[] = {
+                {8, 1, -32},
+                {10, 2, -64}
+            };
+            const int kNumTransforms = sizeof(kTransforms) / sizeof(kTransforms[0]);
+            
+            if (transformIndex < kNumTransforms) {
+                const Transform& t = kTransforms[transformIndex];
+                ESP32QRCodeReader::applyCrossKernel(frameBuffer->buf,
+                                                     debugPreviewScratch_,
+                                                     frameBuffer->width,
+                                                     frameBuffer->height,
+                                                     t.cw, t.div, t.off);
+            } else {
+                // Fallback to basic sharpen if index out of bounds but >= 0
+                ESP32QRCodeReader::applyCrossSharpen7(frameBuffer->buf,
+                                                     debugPreviewScratch_,
+                                                     frameBuffer->width,
+                                                     frameBuffer->height);
+            }
+
             convertedBuffer = fmt2jpg(debugPreviewScratch_,
                                       grayscaleSize,
                                       frameBuffer->width,
@@ -558,7 +580,7 @@ bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, bool applyKerne
                                       &jpegSize);
             ok = convertedBuffer && jpegBuffer && jpegSize > 0;
             if (!ok) {
-                Serial.printf("QR service: sharpened preview conversion failed; falling back to raw frame (w=%u h=%u len=%u).\n",
+                Serial.printf("QR service: transformed preview conversion failed; falling back to raw frame (w=%u h=%u len=%u).\n",
                               frameBuffer->width,
                               frameBuffer->height,
                               frameBuffer->len);
@@ -566,12 +588,12 @@ bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, bool applyKerne
                 ok = convertedBuffer && jpegBuffer && jpegSize > 0;
             }
         } else {
-            Serial.printf("QR service: sharpened preview allocation failed for %u bytes; falling back to raw frame.\n",
+            Serial.printf("QR service: transformed preview allocation failed for %u bytes; falling back to raw frame.\n",
                           static_cast<unsigned int>(grayscaleSize));
             convertedBuffer = frame2jpg(frameBuffer, 80, &jpegBuffer, &jpegSize);
             ok = convertedBuffer && jpegBuffer && jpegSize > 0;
             if (errorMessage) {
-                *errorMessage = "Failed to allocate memory for sharpened frame";
+                *errorMessage = "Failed to allocate memory for transformed frame";
             }
         }
     } else {

@@ -11,6 +11,17 @@ constexpr uint32_t kQrStatsLogEveryFrames = 30;
 constexpr int kCrossSharpenKernelCenter = 7;
 constexpr int kCrossSharpenKernelNeighbor = -1;
 
+struct Transform
+{
+  int cw;
+  int div;
+  int off;
+  const char *name;
+};
+
+constexpr Transform kDefaultTransform{8, 1, -32, "cw8_d1_o-32"};
+constexpr Transform kFallbackNoCandidateTransform{10, 2, -64, "cw10_d2_o-64"};
+
 const char *frameSizeName(framesize_t frameSize)
 {
   switch (frameSize)
@@ -71,9 +82,64 @@ void copyBorders(const uint8_t *src, uint8_t *dst, int width, int height)
   }
 }
 
+bool enqueueDecodeResults(ESP32QRCodeReader *self,
+                          struct quirc *q,
+                          int count,
+                          uint32_t *successfulDecodeCount,
+                          uint32_t *decodeFailureCount)
+{
+  bool decodedAnyValid = false;
+  for (int i = 0; i < count; ++i)
+  {
+    struct quirc_code code;
+    struct quirc_data data;
+    quirc_decode_error_t err;
+
+    quirc_extract(q, i, &code);
+    err = quirc_decode(&code, &data);
+
+    struct QRCodeData qrCodeData{};
+    if (err)
+    {
+      (*decodeFailureCount)++;
+      const char *error = quirc_strerror(err);
+      const int len = strlen(error);
+      for (int j = 0; j < len; ++j)
+      {
+        qrCodeData.payload[j] = error[j];
+      }
+      qrCodeData.valid = false;
+      qrCodeData.payload[len] = '\0';
+      qrCodeData.payloadLen = len;
+    }
+    else
+    {
+      (*successfulDecodeCount)++;
+      qrCodeData.dataType = data.data_type;
+      for (int j = 0; j < data.payload_len; ++j)
+      {
+        qrCodeData.payload[j] = data.payload[j];
+      }
+      qrCodeData.valid = true;
+      qrCodeData.payload[data.payload_len] = '\0';
+      qrCodeData.payloadLen = data.payload_len;
+      decodedAnyValid = true;
+    }
+
+    xQueueSend(self->qrCodeQueue, &qrCodeData, (TickType_t)0);
+  }
+
+  return decodedAnyValid;
+}
+
 } // namespace
 
 void ESP32QRCodeReader::applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
+{
+  applyCrossKernel(src, dst, width, height, kCrossSharpenKernelCenter, 1, 0);
+}
+
+void ESP32QRCodeReader::applyCrossKernel(const uint8_t *src, uint8_t *dst, int width, int height, int centerWeight, int divisor, int offset)
 {
   if ((src == nullptr) || (dst == nullptr) || (width <= 0) || (height <= 0))
   {
@@ -96,13 +162,13 @@ void ESP32QRCodeReader::applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int
     for (int x = 1; x < (width - 1); ++x)
     {
       const int index = rowStart + x;
-      const int sharpened =
-          (kCrossSharpenKernelCenter * src[index]) +
-          (kCrossSharpenKernelNeighbor * src[index - 1]) +
-          (kCrossSharpenKernelNeighbor * src[index + 1]) +
-          (kCrossSharpenKernelNeighbor * src[prevRowStart + x]) +
-          (kCrossSharpenKernelNeighbor * src[nextRowStart + x]);
-      dst[index] = clampToByte(sharpened);
+      const int acc =
+          (centerWeight * src[index]) -
+          src[index - 1] -
+          src[index + 1] -
+          src[prevRowStart + x] -
+          src[nextRowStart + x];
+      dst[index] = clampToByte(acc / divisor + offset);
     }
   }
 }
@@ -218,8 +284,10 @@ void qrCodeDetectTask(void *taskData)
   uint64_t totalCaptureUs = 0;
   uint64_t totalProcessUs = 0;
 
-  Serial.printf("ESP32QRCodeReader: decoder task started frameSize=%s preprocess=kernel_cross_7 throttle=%lums.\n",
+  Serial.printf("ESP32QRCodeReader: decoder task started frameSize=%s default=%s fallback=%s_on_no_candidate throttle=%lums.\n",
                 frameSizeName(camera_config.frame_size),
+                kDefaultTransform.name,
+                kFallbackNoCandidateTransform.name,
                 0UL);
 
   if (self->debug)
@@ -294,115 +362,80 @@ void qrCodeDetectTask(void *taskData)
     }
 
     const uint32_t processStartedAtUs = micros();
-    // Serial.printf("quirc_begin\r\n");
+    bool foundInFrame = false;
+    bool decodedValidInFrame = false;
+    bool usedFallback = false;
+    int lastCandidateCount = 0;
+
     image = quirc_begin(q, NULL, NULL);
-    if (self->debug)
-    {
-      Serial.printf("Frame w h len: %d, %d, %d \r\n", fb->width, fb->height, fb->len);
-    }
-    ESP32QRCodeReader::applyCrossSharpen7(fb->buf, image, fb->width, fb->height);
+    ESP32QRCodeReader::applyCrossKernel(fb->buf,
+                                        image,
+                                        fb->width,
+                                        fb->height,
+                                        kDefaultTransform.cw,
+                                        kDefaultTransform.div,
+                                        kDefaultTransform.off);
     quirc_end(q);
 
-    if (self->debug)
+    lastCandidateCount = quirc_count(q);
+    if (lastCandidateCount > 0)
     {
-      Serial.printf("quirc_end\r\n");
+      foundInFrame = true;
+      decodedValidInFrame = enqueueDecodeResults(self,
+                                                 q,
+                                                 lastCandidateCount,
+                                                 &successfulDecodeCount,
+                                                 &decodeFailureCount);
     }
-    int count = quirc_count(q);
-    if (count == 0)
+
+    if (!decodedValidInFrame && lastCandidateCount == 0)
     {
-      frameCounter++;
+      usedFallback = true;
+      image = quirc_begin(q, NULL, NULL);
+      ESP32QRCodeReader::applyCrossKernel(fb->buf,
+                                          image,
+                                          fb->width,
+                                          fb->height,
+                                          kFallbackNoCandidateTransform.cw,
+                                          kFallbackNoCandidateTransform.div,
+                                          kFallbackNoCandidateTransform.off);
+      quirc_end(q);
+
+      lastCandidateCount = quirc_count(q);
+      if (lastCandidateCount > 0)
+      {
+        foundInFrame = true;
+        decodedValidInFrame = enqueueDecodeResults(self,
+                                                   q,
+                                                   lastCandidateCount,
+                                                   &successfulDecodeCount,
+                                                   &decodeFailureCount);
+      }
+    }
+
+    if (!foundInFrame)
+    {
       noCodeFrameCount++;
-      totalCaptureUs += captureElapsedUs;
-      totalProcessUs += micros() - processStartedAtUs;
-      if ((frameCounter % kQrStatsLogEveryFrames) == 0)
-      {
-        Serial.printf("ESP32QRCodeReader: stats frames=%lu success=%lu decode_fail=%lu no_code=%lu avg_capture=%.1fms avg_process=%.1fms size=%ux%u.\n",
-                      static_cast<unsigned long>(frameCounter),
-                      static_cast<unsigned long>(successfulDecodeCount),
-                      static_cast<unsigned long>(decodeFailureCount),
-                      static_cast<unsigned long>(noCodeFrameCount),
-                      static_cast<double>(totalCaptureUs) / 1000.0 / frameCounter,
-                      static_cast<double>(totalProcessUs) / 1000.0 / frameCounter,
-                      old_width,
-                      old_height);
-      }
-      if (self->debug)
-      {
-        Serial.printf("Error: not a valid qrcode\n");
-      }
-      esp_camera_fb_return(fb);
-      fb = NULL;
-      image = NULL;
-      continue;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-      struct quirc_code code;
-      struct quirc_data data;
-      quirc_decode_error_t err;
-
-      quirc_extract(q, i, &code);
-      err = quirc_decode(&code, &data);
-
-      struct QRCodeData qrCodeData;
-
-      if (err)
-      {
-        decodeFailureCount++;
-        const char *error = quirc_strerror(err);
-        int len = strlen(error);
-        if (self->debug)
-        {
-          Serial.printf("Decoding FAILED: %s\n", error);
-        }
-        for (int i = 0; i < len; i++)
-        {
-          qrCodeData.payload[i] = error[i];
-        }
-        qrCodeData.valid = false;
-        qrCodeData.payload[len] = '\0';
-        qrCodeData.payloadLen = len;
-      }
-      else
-      {
-        successfulDecodeCount++;
-        if (self->debug)
-        {
-          Serial.printf("Decoding successful:\n");
-          dumpData(&data);
-        }
-
-        qrCodeData.dataType = data.data_type;
-        for (int i = 0; i < data.payload_len; i++)
-        {
-          qrCodeData.payload[i] = data.payload[i];
-        }
-        qrCodeData.valid = true;
-        qrCodeData.payload[data.payload_len] = '\0';
-        qrCodeData.payloadLen = data.payload_len;
-      }
-      xQueueSend(self->qrCodeQueue, &qrCodeData, (TickType_t)0);
     }
 
     frameCounter++;
     totalCaptureUs += captureElapsedUs;
     totalProcessUs += micros() - processStartedAtUs;
-    if ((frameCounter % kQrStatsLogEveryFrames) == 0 || count > 0)
+    if ((frameCounter % kQrStatsLogEveryFrames) == 0 || foundInFrame)
     {
-      Serial.printf("ESP32QRCodeReader: stats frames=%lu success=%lu decode_fail=%lu no_code=%lu last_candidates=%d avg_capture=%.1fms avg_process=%.1fms size=%ux%u.\n",
+      Serial.printf("ESP32QRCodeReader: stats frames=%lu success=%lu decode_fail=%lu no_code=%lu last_candidates=%d fallback=%d avg_capture=%.1fms avg_process=%.1fms size=%ux%u.\n",
                     static_cast<unsigned long>(frameCounter),
                     static_cast<unsigned long>(successfulDecodeCount),
                     static_cast<unsigned long>(decodeFailureCount),
                     static_cast<unsigned long>(noCodeFrameCount),
-                    count,
+                    lastCandidateCount,
+                    usedFallback ? 1 : 0,
                     static_cast<double>(totalCaptureUs) / 1000.0 / frameCounter,
                     static_cast<double>(totalProcessUs) / 1000.0 / frameCounter,
                     old_width,
                     old_height);
     }
 
-    //Serial.printf("finish recoginize\r\n");
     esp_camera_fb_return(fb);
     fb = NULL;
     image = NULL;

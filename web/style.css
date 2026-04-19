@@ -418,6 +418,36 @@ body {
     font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
     text-shadow: none;
 }
+.debug-controls {
+    margin: 1rem 0;
+    padding: 0.75rem;
+    background: var(--pico-secondary-focus);
+    border-radius: var(--pico-border-radius);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.debug-controls label {
+    margin-bottom: 0;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+.debug-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+.debug-radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: normal;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.debug-radio-group input {
+    margin-bottom: 0;
+}
 .debug-battery-actions {
     display: flex;
     flex-wrap: wrap;
