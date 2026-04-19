@@ -63,6 +63,8 @@ public:
   void end();
 
   void setDebug(bool);
+
+  static void applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height);
 };
 
 #endif // ESP32_QR_CODE_ARDUINO_H_

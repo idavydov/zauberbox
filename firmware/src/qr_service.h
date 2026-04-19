@@ -20,7 +20,7 @@ class QrService {
     bool isScanning() const;
     bool beginDebugPreview(String *errorMessage = nullptr);
     void endDebugPreview();
-    bool captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMessage = nullptr);
+    bool captureDebugJpeg(std::vector<uint8_t> *jpegData, bool applyKernel = false, String *errorMessage = nullptr);
 
   private:
     static bool parseAlbumId(const char *payload, String *albumId);
@@ -39,6 +39,8 @@ class QrService {
     bool isDuplicatePayload(const String &payload) const;
     void configureCameraRouting() const;
     void disableCameraHardware() const;
+    bool ensureDebugPreviewScratch(size_t requiredBytes);
+    void releaseDebugPreviewScratch();
 
     AlbumScanCallback onAlbumScanned_;
     ESP32QRCodeReader *reader_ = nullptr;
@@ -52,4 +54,6 @@ class QrService {
     bool available_ = false;
     bool debugPreviewActive_ = false;
     AppState debugPreviewReturnState_ = AppState::Idle;
+    uint8_t *debugPreviewScratch_ = nullptr;
+    size_t debugPreviewScratchSize_ = 0;
 };

@@ -21,6 +21,7 @@ let state = {
     debugPreviewError: '',
     debugPreviewUpdatedAt: 0,
     debugPreviewSessionActive: false,
+    debugCameraKernel: false,
     debugLogsText: '',
     debugLogsLoading: false,
     debugLogsError: '',
@@ -523,6 +524,18 @@ function applyCustomDebugBatteryOverride(event) {
     return false;
 }
 
+function toggleDebugCameraKernel() {
+    state.debugCameraKernel = !state.debugCameraKernel;
+    state.debugPreviewError = '';
+    if (state.view === 'debug-camera' && state.debugPreviewSessionActive) {
+        stopDebugPreview();
+        refreshDebugPreview();
+        render();
+        return;
+    }
+    render();
+}
+
 async function refreshDebugPreview() {
     if (state.view !== 'debug-camera' || debugPreviewAbortController) {
         return;
@@ -534,7 +547,8 @@ async function refreshDebugPreview() {
     const controller = new AbortController();
     debugPreviewAbortController = controller;
     try {
-        const response = await fetch(`${API_BASE}/debug/camera-frame?ts=${Date.now()}`, {
+        const kernelParam = state.debugCameraKernel ? '&kernel=1' : '';
+        const response = await fetch(`${API_BASE}/debug/camera-frame?ts=${Date.now()}${kernelParam}`, {
             cache: 'no-store',
             signal: controller.signal
         });
@@ -1420,6 +1434,10 @@ function render() {
                             <strong>Camera Preview</strong>
                             <p>Single-frame snapshots converted on the device.</p>
                         </div>
+                        <label style="margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; cursor: pointer;">
+                            <input type="checkbox" ${state.debugCameraKernel ? 'checked' : ''} onchange="toggleDebugCameraKernel()" style="margin: 0;">
+                            Kernel Cross 7
+                        </label>
                     </header>
                     <div class="debug-frame-shell">
                         ${state.debugPreviewUrl

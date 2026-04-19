@@ -897,9 +897,10 @@ void WebServerService::handleDebugCameraFrame() {
         return;
     }
 
+    const bool applyKernel = server_.arg("kernel") == "1";
     std::vector<uint8_t> jpegData;
     String errorMessage;
-    if (!qrService_->captureDebugJpeg(&jpegData, &errorMessage)) {
+    if (!qrService_->captureDebugJpeg(&jpegData, applyKernel, &errorMessage)) {
         const bool busy =
             errorMessage.startsWith("Preview unavailable while QR scanning") ||
             errorMessage.startsWith("Preview unavailable while audio");

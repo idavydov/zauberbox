@@ -71,7 +71,9 @@ void copyBorders(const uint8_t *src, uint8_t *dst, int width, int height)
   }
 }
 
-void applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
+} // namespace
+
+void ESP32QRCodeReader::applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
 {
   if ((src == nullptr) || (dst == nullptr) || (width <= 0) || (height <= 0))
   {
@@ -104,8 +106,6 @@ void applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
     }
   }
 }
-
-} // namespace
 
 ESP32QRCodeReader::ESP32QRCodeReader() : ESP32QRCodeReader(CAMERA_MODEL_AI_THINKER, FRAMESIZE_QVGA)
 {
@@ -300,7 +300,7 @@ void qrCodeDetectTask(void *taskData)
     {
       Serial.printf("Frame w h len: %d, %d, %d \r\n", fb->width, fb->height, fb->len);
     }
-    applyCrossSharpen7(fb->buf, image, fb->width, fb->height);
+    ESP32QRCodeReader::applyCrossSharpen7(fb->buf, image, fb->width, fb->height);
     quirc_end(q);
 
     if (self->debug)

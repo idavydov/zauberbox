@@ -1,6 +1,7 @@
 #include "qr_service.h"
 
 #include <esp_camera.h>
+#include <esp_heap_caps.h>
 #include <img_converters.h>
 
 #include "app_state.h"
@@ -447,11 +448,45 @@ void QrService::stopDebugPreviewSession() {
     if (!scanning_ && cameraInitialized_) {
         deinitCamera();
     }
+    releaseDebugPreviewScratch();
 
     Serial.println("QR service: debug preview inactive.");
 }
 
-bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMessage) {
+bool QrService::ensureDebugPreviewScratch(size_t requiredBytes) {
+    if (debugPreviewScratch_ && debugPreviewScratchSize_ >= requiredBytes) {
+        return true;
+    }
+
+    releaseDebugPreviewScratch();
+
+    debugPreviewScratch_ = static_cast<uint8_t *>(
+        heap_caps_malloc(requiredBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!debugPreviewScratch_) {
+        debugPreviewScratch_ = static_cast<uint8_t *>(
+            heap_caps_malloc(requiredBytes, MALLOC_CAP_8BIT));
+    }
+    if (!debugPreviewScratch_) {
+        debugPreviewScratchSize_ = 0;
+        return false;
+    }
+
+    debugPreviewScratchSize_ = requiredBytes;
+    Serial.printf("QR service: allocated preview scratch buffer (%u bytes).\n",
+                  static_cast<unsigned int>(requiredBytes));
+    return true;
+}
+
+void QrService::releaseDebugPreviewScratch() {
+    if (!debugPreviewScratch_) {
+        return;
+    }
+    heap_caps_free(debugPreviewScratch_);
+    debugPreviewScratch_ = nullptr;
+    debugPreviewScratchSize_ = 0;
+}
+
+bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, bool applyKernel, String *errorMessage) {
     if (!jpegData) {
         if (errorMessage) {
             *errorMessage = "Debug preview buffer missing";
@@ -505,6 +540,40 @@ bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMe
         jpegBuffer = frameBuffer->buf;
         jpegSize = frameBuffer->len;
         ok = true;
+    } else if (applyKernel && frameBuffer->format == PIXFORMAT_GRAYSCALE) {
+        const size_t grayscaleSize =
+            static_cast<size_t>(frameBuffer->width) * static_cast<size_t>(frameBuffer->height);
+        if (ensureDebugPreviewScratch(grayscaleSize)) {
+            ESP32QRCodeReader::applyCrossSharpen7(frameBuffer->buf,
+                                                 debugPreviewScratch_,
+                                                 frameBuffer->width,
+                                                 frameBuffer->height);
+            convertedBuffer = fmt2jpg(debugPreviewScratch_,
+                                      grayscaleSize,
+                                      frameBuffer->width,
+                                      frameBuffer->height,
+                                      PIXFORMAT_GRAYSCALE,
+                                      80,
+                                      &jpegBuffer,
+                                      &jpegSize);
+            ok = convertedBuffer && jpegBuffer && jpegSize > 0;
+            if (!ok) {
+                Serial.printf("QR service: sharpened preview conversion failed; falling back to raw frame (w=%u h=%u len=%u).\n",
+                              frameBuffer->width,
+                              frameBuffer->height,
+                              frameBuffer->len);
+                convertedBuffer = frame2jpg(frameBuffer, 80, &jpegBuffer, &jpegSize);
+                ok = convertedBuffer && jpegBuffer && jpegSize > 0;
+            }
+        } else {
+            Serial.printf("QR service: sharpened preview allocation failed for %u bytes; falling back to raw frame.\n",
+                          static_cast<unsigned int>(grayscaleSize));
+            convertedBuffer = frame2jpg(frameBuffer, 80, &jpegBuffer, &jpegSize);
+            ok = convertedBuffer && jpegBuffer && jpegSize > 0;
+            if (errorMessage) {
+                *errorMessage = "Failed to allocate memory for sharpened frame";
+            }
+        }
     } else {
         convertedBuffer = frame2jpg(frameBuffer, 80, &jpegBuffer, &jpegSize);
         ok = convertedBuffer && jpegBuffer && jpegSize > 0;
@@ -512,7 +581,7 @@ bool QrService::captureDebugJpeg(std::vector<uint8_t> *jpegData, String *errorMe
 
     if (ok) {
         jpegData->assign(jpegBuffer, jpegBuffer + jpegSize);
-    } else if (errorMessage) {
+    } else if (errorMessage && (!errorMessage || errorMessage->isEmpty())) {
         *errorMessage = "Failed to encode preview frame";
     }
 
@@ -610,6 +679,7 @@ void QrService::deinitCamera() {
         cameraInitialized_ = false;
     }
 
+    releaseDebugPreviewScratch();
     disableCameraHardware();
     Serial.println("QR service: camera deinitialized.");
 }
