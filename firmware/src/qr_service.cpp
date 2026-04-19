@@ -572,6 +572,8 @@ bool QrService::initCamera(bool startDecoderTask) {
     sensor_t *sensor = esp_camera_sensor_get();
     if (sensor) {
         sensor->set_hmirror(sensor, 1);
+        sensor->set_aec2(sensor, 1);
+        sensor->set_ae_level(sensor, -1);
     }
 
     cameraInitialized_ = true;
