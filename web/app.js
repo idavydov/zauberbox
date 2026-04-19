@@ -7,6 +7,7 @@ const MM_TO_INCH = 25.4;
 const TILE_WIDTH_MM = 100;
 const TILE_HEIGHT_MM = 50;
 const SHEET_ROWS = 3;
+const SUPPORTED_AUDIO_EXTENSIONS = ['.aac', '.flac', '.m4a', '.mp3', '.ogg', '.wav'];
 let state = {
     view: 'dashboard',
     currentPath: null,
@@ -1123,8 +1124,8 @@ function drawCoverText(ctx, mp3s, xOffset, yOffset, size) {
 
 function defaultTileTextEntries(files) {
     return files
-        .filter(f => f.name.toLowerCase().endsWith('.mp3'))
-        .map(f => f.name.replace(/\.mp3$/i, ''))
+        .filter(f => SUPPORTED_AUDIO_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext)))
+        .map(f => f.name.replace(/\.(aac|flac|m4a|mp3|ogg|wav)$/i, ''))
         .sort();
 }
 
@@ -1706,8 +1707,8 @@ function render() {
                     <div class="file-list">
         `;
 
-        const mp3s = state.files.filter(f => f.name.toLowerCase().endsWith('.mp3'));
-        const others = state.files.filter(f => !f.name.toLowerCase().endsWith('.mp3'));
+        const mp3s = state.files.filter(f => SUPPORTED_AUDIO_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext)));
+        const others = state.files.filter(f => !SUPPORTED_AUDIO_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext)));
 
         const renderFileItem = (file, icon) => {
             const fileUrl = `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent(file.name)}`;
