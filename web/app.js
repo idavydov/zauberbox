@@ -112,6 +112,7 @@ function showModal({ title, message, input = false, value = '', confirmText = 'C
         const confirmBtn = document.getElementById('modal-confirm');
         const cancelBtn = document.getElementById('modal-cancel');
         const closeBtn = modal.querySelector('[aria-label="Close"]');
+        const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
         titleEl.textContent = title;
         messageEl.textContent = message;
@@ -148,8 +149,15 @@ function showModal({ title, message, input = false, value = '', confirmText = 'C
         confirmBtn.onclick = handleConfirm;
         cancelBtn.onclick = handleCancel;
         closeBtn.onclick = handleCancel;
-        inputEl.onkeydown = (e) => { if (e.key === 'Enter') handleConfirm(); };
-        
+        inputEl.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleConfirm();
+            }
+        };
+
+        opener?.blur();
         modal.showModal();
         if (input) setTimeout(() => inputEl.focus(), 50);
     });
@@ -885,6 +893,51 @@ async function handleDelete(fileName) {
     enterDirectory(state.currentPath);
 }
 
+async function writeTextFile(path, fileName, content) {
+    const file = new File([content], fileName, { type: 'text/plain' });
+    const formData = new FormData();
+    formData.append('file', file);
+    await uploadFile(
+        `/upload?path=${encodeURIComponent(path)}&type=file&last_modified_ms=${encodeURIComponent(String(Date.now()))}`,
+        formData,
+        () => {}
+    );
+}
+
+async function handleSetTitle() {
+    const currentTitleEntries = await resolveTileTextEntries(state.currentPath, state.files);
+    const currentTitleFile = state.files.find(f => f.name.toLowerCase() === 'title.txt');
+    const hasOverride = Boolean(currentTitleFile);
+    const currentTitle = hasOverride ? (currentTitleEntries[0] || '') : '';
+
+    const nextTitle = await showModal({
+        title: hasOverride ? 'Edit Title' : 'Set Title',
+        message: 'Album title stored in title.txt. Leave empty to remove the override.',
+        input: true,
+        value: currentTitle,
+        confirmText: 'Save'
+    });
+    if (nextTitle === null) {
+        return;
+    }
+
+    const trimmedTitle = nextTitle.trim();
+    if (!trimmedTitle) {
+        if (currentTitleFile) {
+            await fetchAPI('/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ path: state.currentPath, file_name: currentTitleFile.name })
+            });
+        }
+    } else {
+        await writeTextFile(state.currentPath, 'title.txt', `${trimmedTitle}\n`);
+    }
+
+    state.directories = await fetchAPI('/list');
+    await enterDirectory(state.currentPath, false);
+}
+
 async function handleUpload(files, forcedType = null) {
     if (!files || files.length === 0 || state.upload || !state.currentPath) return;
 
@@ -1068,6 +1121,39 @@ function drawCoverText(ctx, mp3s, xOffset, yOffset, size) {
     });
 }
 
+function defaultTileTextEntries(files) {
+    return files
+        .filter(f => f.name.toLowerCase().endsWith('.mp3'))
+        .map(f => f.name.replace(/\.mp3$/i, ''))
+        .sort();
+}
+
+async function readTileTitleOverride(path, files) {
+    const titleFile = files.find(f => f.name.toLowerCase() === 'title.txt');
+    if (!titleFile) {
+        return null;
+    }
+
+    const response = await fetch(
+        `${API_BASE}/file?path=${encodeURIComponent(path)}&name=${encodeURIComponent(titleFile.name)}`,
+        { cache: 'no-store' }
+    );
+    if (!response.ok) {
+        throw new Error(`Failed to load ${titleFile.name}`);
+    }
+
+    const text = (await response.text()).trim();
+    return text ? [text] : [];
+}
+
+async function resolveTileTextEntries(path, files) {
+    const override = await readTileTitleOverride(path, files);
+    if (override !== null) {
+        return override;
+    }
+    return defaultTileTextEntries(files);
+}
+
 async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset, width, height) {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(xOffset, yOffset, width, height);
@@ -1123,10 +1209,7 @@ async function handleGenerateCard() {
         canvas.height = HEIGHT_PX;
         const ctx = canvas.getContext('2d');
 
-        const mp3s = state.files
-            .filter(f => f.name.toLowerCase().endsWith('.mp3'))
-            .map(f => f.name.replace(/\.mp3$/i, ''))
-            .sort();
+        const mp3s = await resolveTileTextEntries(state.currentPath, state.files);
 
         await generateSingleCard(ctx, state.currentPath, coverUrl, mp3s, 0, 0, WIDTH_PX, HEIGHT_PX);
 
@@ -1187,10 +1270,7 @@ async function handleDownloadSheets() {
                 const files = await fetchAPI(`/files?path=${encodeURIComponent(name)}`);
                 const coverUrl = `${API_BASE}/file?path=${encodeURIComponent(name)}&name=${encodeURIComponent('cover.jpg')}`;
                 const hasCover = files.some(f => f.name.toLowerCase() === 'cover.jpg');
-                const mp3s = files
-                    .filter(f => f.name.toLowerCase().endsWith('.mp3'))
-                    .map(f => f.name.replace(/\.mp3$/i, ''))
-                    .sort();
+                const mp3s = await resolveTileTextEntries(name, files);
                 if (!hasCover) {
                     throw new Error(`Missing cover image for ${name}`);
                 }
@@ -1338,12 +1418,13 @@ function render() {
         `;
         state.directories.forEach(dir => {
             const isSelected = state.selectedDirs.has(dir.name);
+            const secondaryText = dir.title || dir.first_mp3 || 'Empty';
             html += `
                 <div class="dir-card ${isSelected ? 'selected' : ''}" onclick="${state.selectionMode ? `toggleDirSelection('${dir.name}')` : `enterDirectory('${dir.name}')`}">
                     ${state.selectionMode ? `<div class="select-overlay">${ICONS.check}</div>` : `<div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>`}
                     ${dir.cover ? `<img src="${dir.cover}">` : `<div class="placeholder-img"><span>No Cover</span></div>`}
                     <span class="name">${dir.name}</span>
-                    <span class="first-mp3">${dir.first_mp3 || 'Empty'}</span>
+                    <span class="first-mp3">${escapeHtml(secondaryText)}</span>
                 </div>
             `;
         });
@@ -1601,6 +1682,7 @@ function render() {
             <li><strong>${state.currentPath}</strong></li>
         `;
         navRight.innerHTML = `
+            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleSetTitle()" title="Set album title">${ICONS.edit} ${state.files.some(f => f.name.toLowerCase() === 'title.txt') ? 'Edit Title' : 'Set Title'}</button></li>
             <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button></li>
         `;
         

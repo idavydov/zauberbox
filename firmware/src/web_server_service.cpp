@@ -95,6 +95,21 @@ String readLittleFsTextFile(const char *path) {
     return body;
 }
 
+String readSdTextFile(const char *path) {
+    File file = SD_MMC.open(path, "r");
+    if (!file || file.isDirectory()) {
+        if (file) {
+            file.close();
+        }
+        return "";
+    }
+
+    String body = file.readString();
+    file.close();
+    body.trim();
+    return body;
+}
+
 uint64_t fnv1a64Begin() {
     return 1469598103934665603ULL;
 }
@@ -562,11 +577,15 @@ void WebServerService::handleListAlbums() {
         File albumDir = SD_MMC.open(albumPath.c_str());
         String coverPath;
         String firstAudio;
+        String title;
         if (albumDir && albumDir.isDirectory()) {
             for (File entry = albumDir.openNextFile(); entry; entry = albumDir.openNextFile()) {
                 const String entryName = baseNameForPath(entry.name());
                 const String lower = lowerCaseCopy(entryName);
                 if (!entry.isDirectory()) {
+                    if (title.isEmpty() && lower == "title.txt") {
+                        title = readSdTextFile(entry.path());
+                    }
                     if (coverPath.isEmpty() &&
                         (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png"))) {
                         coverPath = String("/api/file?path=") + urlEncode(albumName) + "&name=" + urlEncode(entryName);
@@ -586,6 +605,9 @@ void WebServerService::handleListAlbums() {
 
         if (!coverPath.isEmpty()) {
             item["cover"] = coverPath;
+        }
+        if (!title.isEmpty()) {
+            item["title"] = title;
         }
         if (!firstAudio.isEmpty()) {
             item["first_mp3"] = firstAudio;

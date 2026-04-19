@@ -43,8 +43,13 @@ def list_directories():
         path = os.path.join(STORAGE_DIR, name)
         if os.path.isdir(path):
             cover = None
+            title = None
             if os.path.exists(os.path.join(path, "cover.jpg")):
                 cover = f"/api/file?path={name}&name=cover.jpg"
+            title_path = os.path.join(path, "title.txt")
+            if os.path.exists(title_path):
+                with open(title_path, "r", encoding="utf-8") as f:
+                    title = f.read().strip()
             
             first_mp3 = None
             files = sorted(os.listdir(path))
@@ -56,7 +61,8 @@ def list_directories():
             dirs.append({
                 "name": name,
                 "cover": cover,
-                "first_mp3": first_mp3
+                "first_mp3": first_mp3,
+                "title": title
             })
     return jsonify(dirs)
 
@@ -69,9 +75,20 @@ def list_files():
     
     files = []
     for name in sorted(os.listdir(full_path)):
+        lower_name = name.lower()
+        if lower_name.endswith(".mp3"):
+            mime_type = "audio/mpeg"
+        elif lower_name.endswith(".jpg") or lower_name.endswith(".jpeg"):
+            mime_type = "image/jpeg"
+        elif lower_name.endswith(".png"):
+            mime_type = "image/png"
+        elif lower_name.endswith(".txt"):
+            mime_type = "text/plain"
+        else:
+            mime_type = "application/octet-stream"
         files.append({
             "name": name,
-            "type": "audio/mpeg" if name.lower().endswith(".mp3") else "image/jpeg" if name.lower().endswith(".jpg") else "application/octet-stream"
+            "type": mime_type
         })
     return jsonify(files)
 
