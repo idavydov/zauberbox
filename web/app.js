@@ -1385,6 +1385,9 @@ function render() {
                         <li><a href="https://github.com/davidshimjs/qrcodejs" target="_blank"><strong>qrcode.js</strong></a> (MIT) - QR code generation in the browser.</li>
                         <li><a href="https://github.com/ayresnet/AyresWiFiManager" target="_blank"><strong>AyresWiFiManager</strong></a> (MIT) - Captive portal and WiFi management.</li>
                         <li><a href="https://github.com/dlbeer/quirc" target="_blank"><strong>quirc</strong></a> (ISC) - QR code decoder library used in firmware.</li>
+                        <li><a href="https://github.com/bblanchon/ArduinoJson" target="_blank"><strong>ArduinoJson</strong></a> (MIT) - JSON library.</li>
+                        <li><a href="https://github.com/adafruit/adafruit_neopixel" target="_blank"><strong>Adafruit_NeoPixel</strong></a> (LPGL v3.0) - controlling single-wire LED pixels.</li>
+                        <li><a href="https://github.com/RobTillaart/TCA9555" target="_blank"><strong>TCA9555</strong></a> (MIT) - library for I2C TCA9555 16 channel port expander.</li>
                     </ul>
                 </article>
             </section>
