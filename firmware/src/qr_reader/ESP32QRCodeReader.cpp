@@ -8,6 +8,8 @@
 namespace {
 
 constexpr uint32_t kQrStatsLogEveryFrames = 30;
+constexpr int kCrossSharpenKernelCenter = 7;
+constexpr int kCrossSharpenKernelNeighbor = -1;
 
 const char *frameSizeName(framesize_t frameSize)
 {
@@ -21,6 +23,85 @@ const char *frameSizeName(framesize_t frameSize)
       return "VGA";
     default:
       return "other";
+  }
+}
+
+uint8_t clampToByte(int value)
+{
+  if (value < 0)
+  {
+    return 0;
+  }
+  if (value > 255)
+  {
+    return 255;
+  }
+  return static_cast<uint8_t>(value);
+}
+
+void copyBorders(const uint8_t *src, uint8_t *dst, int width, int height)
+{
+  if ((src == nullptr) || (dst == nullptr) || (width <= 0) || (height <= 0))
+  {
+    return;
+  }
+
+  memcpy(dst, src, width);
+  if (height > 1)
+  {
+    const int lastRowStart = (height - 1) * width;
+    memcpy(dst + lastRowStart, src + lastRowStart, width);
+  }
+
+  if (width == 1)
+  {
+    for (int y = 1; y < (height - 1); ++y)
+    {
+      const int rowStart = y * width;
+      dst[rowStart] = src[rowStart];
+    }
+    return;
+  }
+
+  for (int y = 1; y < (height - 1); ++y)
+  {
+    const int rowStart = y * width;
+    dst[rowStart] = src[rowStart];
+    dst[rowStart + width - 1] = src[rowStart + width - 1];
+  }
+}
+
+void applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
+{
+  if ((src == nullptr) || (dst == nullptr) || (width <= 0) || (height <= 0))
+  {
+    return;
+  }
+
+  if ((width < 3) || (height < 3))
+  {
+    memcpy(dst, src, static_cast<size_t>(width) * static_cast<size_t>(height));
+    return;
+  }
+
+  copyBorders(src, dst, width, height);
+
+  for (int y = 1; y < (height - 1); ++y)
+  {
+    const int rowStart = y * width;
+    const int prevRowStart = rowStart - width;
+    const int nextRowStart = rowStart + width;
+    for (int x = 1; x < (width - 1); ++x)
+    {
+      const int index = rowStart + x;
+      const int sharpened =
+          (kCrossSharpenKernelCenter * src[index]) +
+          (kCrossSharpenKernelNeighbor * src[index - 1]) +
+          (kCrossSharpenKernelNeighbor * src[index + 1]) +
+          (kCrossSharpenKernelNeighbor * src[prevRowStart + x]) +
+          (kCrossSharpenKernelNeighbor * src[nextRowStart + x]);
+      dst[index] = clampToByte(sharpened);
+    }
   }
 }
 
@@ -137,7 +218,7 @@ void qrCodeDetectTask(void *taskData)
   uint64_t totalCaptureUs = 0;
   uint64_t totalProcessUs = 0;
 
-  Serial.printf("ESP32QRCodeReader: decoder task started frameSize=%s throttle=%lums.\n",
+  Serial.printf("ESP32QRCodeReader: decoder task started frameSize=%s preprocess=kernel_cross_7 throttle=%lums.\n",
                 frameSizeName(camera_config.frame_size),
                 0UL);
 
@@ -219,7 +300,7 @@ void qrCodeDetectTask(void *taskData)
     {
       Serial.printf("Frame w h len: %d, %d, %d \r\n", fb->width, fb->height, fb->len);
     }
-    memcpy(image, fb->buf, fb->len);
+    applyCrossSharpen7(fb->buf, image, fb->width, fb->height);
     quirc_end(q);
 
     if (self->debug)
