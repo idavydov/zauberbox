@@ -22,6 +22,28 @@ struct Transform
 constexpr Transform kDefaultTransform{8, 1, -32, "cw8_d1_o-32"};
 constexpr Transform kFallbackNoCandidateTransform{10, 2, -64, "cw10_d2_o-64"};
 
+enum class FilterPassKind
+{
+  Raw,
+  CrossKernel,
+};
+
+struct FilterPass
+{
+  FilterPassKind kind;
+  const Transform *transform;
+  const char *name;
+};
+
+constexpr FilterPass kScheduledFilterPasses[] = {
+    {FilterPassKind::CrossKernel, &kDefaultTransform, kDefaultTransform.name},
+    {FilterPassKind::Raw, nullptr, "raw"},
+    {FilterPassKind::CrossKernel, &kDefaultTransform, kDefaultTransform.name},
+    {FilterPassKind::CrossKernel, &kFallbackNoCandidateTransform, kFallbackNoCandidateTransform.name},
+};
+
+constexpr size_t kScheduledFilterPassCount = sizeof(kScheduledFilterPasses) / sizeof(kScheduledFilterPasses[0]);
+
 const char *frameSizeName(framesize_t frameSize)
 {
   switch (frameSize)
@@ -203,6 +225,37 @@ void applyCrossKernelFixed(const uint8_t *src, uint8_t *dst, int width, int heig
   }
 }
 
+void applyFilterPass(const FilterPass &filterPass,
+                     const uint8_t *src,
+                     uint8_t *dst,
+                     int width,
+                     int height)
+{
+  if ((src == nullptr) || (dst == nullptr) || (width <= 0) || (height <= 0))
+  {
+    return;
+  }
+
+  if (filterPass.kind == FilterPassKind::Raw)
+  {
+    memcpy(dst, src, static_cast<size_t>(width) * static_cast<size_t>(height));
+    return;
+  }
+
+  if (filterPass.transform == nullptr)
+  {
+    return;
+  }
+
+  ESP32QRCodeReader::applyCrossKernel(src,
+                                      dst,
+                                      width,
+                                      height,
+                                      filterPass.transform->cw,
+                                      filterPass.transform->div,
+                                      filterPass.transform->off);
+}
+
 } // namespace
 
 void ESP32QRCodeReader::applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
@@ -372,10 +425,12 @@ void qrCodeDetectTask(void *taskData)
   uint64_t totalCaptureUs = 0;
   uint64_t totalProcessUs = 0;
 
-  Serial.printf("ESP32QRCodeReader: decoder task started frameSize=%s default=%s fallback=%s_on_no_candidate throttle=%lums.\n",
+  Serial.printf("ESP32QRCodeReader: decoder task started frameSize=%s schedule=%s,%s,%s,%s throttle=%lums.\n",
                 frameSizeName(camera_config.frame_size),
-                kDefaultTransform.name,
-                kFallbackNoCandidateTransform.name,
+                kScheduledFilterPasses[0].name,
+                kScheduledFilterPasses[1].name,
+                kScheduledFilterPasses[2].name,
+                kScheduledFilterPasses[3].name,
                 0UL);
 
   if (self->debug)
@@ -450,55 +505,23 @@ void qrCodeDetectTask(void *taskData)
     }
 
     const uint32_t processStartedAtUs = micros();
+    const FilterPass &filterPass = kScheduledFilterPasses[frameCounter % kScheduledFilterPassCount];
     bool foundInFrame = false;
-    bool decodedValidInFrame = false;
-    bool usedFallback = false;
     int lastCandidateCount = 0;
 
     image = quirc_begin(q, NULL, NULL);
-    ESP32QRCodeReader::applyCrossKernel(fb->buf,
-                                        image,
-                                        fb->width,
-                                        fb->height,
-                                        kDefaultTransform.cw,
-                                        kDefaultTransform.div,
-                                        kDefaultTransform.off);
+    applyFilterPass(filterPass, fb->buf, image, fb->width, fb->height);
     quirc_end(q);
 
     lastCandidateCount = quirc_count(q);
     if (lastCandidateCount > 0)
     {
       foundInFrame = true;
-      decodedValidInFrame = enqueueDecodeResults(self,
-                                                 q,
-                                                 lastCandidateCount,
-                                                 &successfulDecodeCount,
-                                                 &decodeFailureCount);
-    }
-
-    if (!decodedValidInFrame && lastCandidateCount == 0)
-    {
-      usedFallback = true;
-      image = quirc_begin(q, NULL, NULL);
-      ESP32QRCodeReader::applyCrossKernel(fb->buf,
-                                          image,
-                                          fb->width,
-                                          fb->height,
-                                          kFallbackNoCandidateTransform.cw,
-                                          kFallbackNoCandidateTransform.div,
-                                          kFallbackNoCandidateTransform.off);
-      quirc_end(q);
-
-      lastCandidateCount = quirc_count(q);
-      if (lastCandidateCount > 0)
-      {
-        foundInFrame = true;
-        decodedValidInFrame = enqueueDecodeResults(self,
-                                                   q,
-                                                   lastCandidateCount,
-                                                   &successfulDecodeCount,
-                                                   &decodeFailureCount);
-      }
+      (void)enqueueDecodeResults(self,
+                                 q,
+                                 lastCandidateCount,
+                                 &successfulDecodeCount,
+                                 &decodeFailureCount);
     }
 
     if (!foundInFrame)
@@ -511,13 +534,13 @@ void qrCodeDetectTask(void *taskData)
     totalProcessUs += micros() - processStartedAtUs;
     if ((frameCounter % kQrStatsLogEveryFrames) == 0 || foundInFrame)
     {
-      Serial.printf("ESP32QRCodeReader: stats frames=%lu success=%lu decode_fail=%lu no_code=%lu last_candidates=%d fallback=%d avg_capture=%.1fms avg_process=%.1fms size=%ux%u.\n",
+      Serial.printf("ESP32QRCodeReader: stats frames=%lu success=%lu decode_fail=%lu no_code=%lu last_candidates=%d filter=%s avg_capture=%.1fms avg_process=%.1fms size=%ux%u.\n",
                     static_cast<unsigned long>(frameCounter),
                     static_cast<unsigned long>(successfulDecodeCount),
                     static_cast<unsigned long>(decodeFailureCount),
                     static_cast<unsigned long>(noCodeFrameCount),
                     lastCandidateCount,
-                    usedFallback ? 1 : 0,
+                    filterPass.name,
                     static_cast<double>(totalCaptureUs) / 1000.0 / frameCounter,
                     static_cast<double>(totalProcessUs) / 1000.0 / frameCounter,
                     old_width,
