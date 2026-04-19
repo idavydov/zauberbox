@@ -132,14 +132,43 @@ bool enqueueDecodeResults(ESP32QRCodeReader *self,
   return decodedAnyValid;
 }
 
-} // namespace
-
-void ESP32QRCodeReader::applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
+template <int CenterWeight>
+inline int centerContribution(const uint8_t value)
 {
-  applyCrossKernel(src, dst, width, height, kCrossSharpenKernelCenter, 1, 0);
+  if constexpr (CenterWeight == 8)
+  {
+    return static_cast<int>(value) << 3;
+  }
+  else if constexpr (CenterWeight == 10)
+  {
+    const int promoted = static_cast<int>(value);
+    return (promoted << 3) + (promoted << 1);
+  }
+  else
+  {
+    return CenterWeight * static_cast<int>(value);
+  }
 }
 
-void ESP32QRCodeReader::applyCrossKernel(const uint8_t *src, uint8_t *dst, int width, int height, int centerWeight, int divisor, int offset)
+template <int Divisor>
+inline int applyDivisor(const int value)
+{
+  if constexpr (Divisor == 1)
+  {
+    return value;
+  }
+  else if constexpr (Divisor == 2)
+  {
+    return value / 2;
+  }
+  else
+  {
+    return value / Divisor;
+  }
+}
+
+template <int CenterWeight, int Divisor, int Offset>
+void applyCrossKernelFixed(const uint8_t *src, uint8_t *dst, int width, int height)
 {
   if ((src == nullptr) || (dst == nullptr) || (width <= 0) || (height <= 0))
   {
@@ -156,19 +185,78 @@ void ESP32QRCodeReader::applyCrossKernel(const uint8_t *src, uint8_t *dst, int w
 
   for (int y = 1; y < (height - 1); ++y)
   {
-    const int rowStart = y * width;
-    const int prevRowStart = rowStart - width;
-    const int nextRowStart = rowStart + width;
+    const uint8_t *__restrict__ prev = src + ((y - 1) * width);
+    const uint8_t *__restrict__ cur = src + (y * width);
+    const uint8_t *__restrict__ next = src + ((y + 1) * width);
+    uint8_t *__restrict__ out = dst + (y * width);
+
     for (int x = 1; x < (width - 1); ++x)
     {
-      const int index = rowStart + x;
-      const int acc =
-          (centerWeight * src[index]) -
-          src[index - 1] -
-          src[index + 1] -
-          src[prevRowStart + x] -
-          src[nextRowStart + x];
-      dst[index] = clampToByte(acc / divisor + offset);
+      int acc = centerContribution<CenterWeight>(cur[x]);
+      acc -= static_cast<int>(cur[x - 1]);
+      acc -= static_cast<int>(cur[x + 1]);
+      acc -= static_cast<int>(prev[x]);
+      acc -= static_cast<int>(next[x]);
+      acc = applyDivisor<Divisor>(acc) + Offset;
+      out[x] = clampToByte(acc);
+    }
+  }
+}
+
+} // namespace
+
+void ESP32QRCodeReader::applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height)
+{
+  applyCrossKernel(src, dst, width, height, kCrossSharpenKernelCenter, 1, 0);
+}
+
+void ESP32QRCodeReader::applyCrossKernel(const uint8_t *src, uint8_t *dst, int width, int height, int centerWeight, int divisor, int offset)
+{
+  if ((centerWeight == 8) && (divisor == 1) && (offset == -32))
+  {
+    applyCrossKernelFixed<8, 1, -32>(src, dst, width, height);
+    return;
+  }
+  if ((centerWeight == 10) && (divisor == 2) && (offset == -64))
+  {
+    applyCrossKernelFixed<10, 2, -64>(src, dst, width, height);
+    return;
+  }
+  if ((centerWeight == kCrossSharpenKernelCenter) && (divisor == 1) && (offset == 0))
+  {
+    applyCrossKernelFixed<kCrossSharpenKernelCenter, 1, 0>(src, dst, width, height);
+    return;
+  }
+
+  if ((src == nullptr) || (dst == nullptr) || (width <= 0) || (height <= 0))
+  {
+    return;
+  }
+
+  if ((width < 3) || (height < 3))
+  {
+    memcpy(dst, src, static_cast<size_t>(width) * static_cast<size_t>(height));
+    return;
+  }
+
+  copyBorders(src, dst, width, height);
+
+  for (int y = 1; y < (height - 1); ++y)
+  {
+    const uint8_t *__restrict__ prev = src + ((y - 1) * width);
+    const uint8_t *__restrict__ cur = src + (y * width);
+    const uint8_t *__restrict__ next = src + ((y + 1) * width);
+    uint8_t *__restrict__ out = dst + (y * width);
+
+    for (int x = 1; x < (width - 1); ++x)
+    {
+      int acc = centerWeight * static_cast<int>(cur[x]);
+      acc -= static_cast<int>(cur[x - 1]);
+      acc -= static_cast<int>(cur[x + 1]);
+      acc -= static_cast<int>(prev[x]);
+      acc -= static_cast<int>(next[x]);
+      acc = (acc / divisor) + offset;
+      out[x] = clampToByte(acc);
     }
   }
 }
