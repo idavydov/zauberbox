@@ -236,6 +236,10 @@ bool QrService::stopsBeforePlayback() const {
     return true;
 }
 
+bool QrService::usesSelectionStartAudioCue() const {
+    return true;
+}
+
 AlbumInputBackend QrService::backend() const {
     return AlbumInputBackend::Qr;
 }
@@ -246,6 +250,11 @@ bool QrService::supportsDebugCameraPreview() const {
 
 bool QrService::supportsQrAlbumCards() const {
     return true;
+}
+
+void QrService::prepareForSleep() {
+    stopDebugPreviewSession();
+    stopScanning();
 }
 
 bool QrService::beginDebugPreview(String *errorMessage) {

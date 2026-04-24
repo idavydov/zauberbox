@@ -28,6 +28,10 @@ bool Rc522Service::stopsBeforePlayback() const {
     return false;
 }
 
+bool Rc522Service::usesSelectionStartAudioCue() const {
+    return false;
+}
+
 AlbumInputBackend Rc522Service::backend() const {
     return AlbumInputBackend::Rc522;
 }
@@ -38,4 +42,8 @@ bool Rc522Service::supportsDebugCameraPreview() const {
 
 bool Rc522Service::supportsQrAlbumCards() const {
     return false;
+}
+
+void Rc522Service::prepareForSleep() {
+    active_ = false;
 }

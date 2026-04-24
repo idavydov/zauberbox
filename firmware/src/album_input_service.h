@@ -38,7 +38,9 @@ class AlbumInputService {
     virtual bool isSelectionActive() const = 0;
     virtual bool isHardwareActive() const = 0;
     virtual bool stopsBeforePlayback() const = 0;
+    virtual bool usesSelectionStartAudioCue() const = 0;
     virtual AlbumInputBackend backend() const = 0;
     virtual bool supportsDebugCameraPreview() const = 0;
     virtual bool supportsQrAlbumCards() const = 0;
+    virtual void prepareForSleep() = 0;
 };

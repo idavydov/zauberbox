@@ -326,17 +326,18 @@ bool AppController::shouldMuteOutputInCurrentState() const {
 }
 
 void AppController::handleScanAudioState() {
-#if defined(ZAUBERBOX_INPUT_RC522)
-    lastSelectionActive_ = false;
-    scanStartChimeReadyAtMs_ = 0;
-    scanStartChimeMuteReadyAtMs_ = 0;
-    scanStartChimePlaybackWaitUntilMs_ = 0;
-    scanStartChimeQueued_ = false;
-    scanStartChimePlaybackSeen_ = false;
-    return;
-#else
+    if (albumInputService_ == nullptr || !albumInputService_->usesSelectionStartAudioCue()) {
+        lastSelectionActive_ = false;
+        scanStartChimeReadyAtMs_ = 0;
+        scanStartChimeMuteReadyAtMs_ = 0;
+        scanStartChimePlaybackWaitUntilMs_ = 0;
+        scanStartChimeQueued_ = false;
+        scanStartChimePlaybackSeen_ = false;
+        return;
+    }
+
     const bool selectionActive =
-        albumInputService_ != nullptr && albumInputService_->isSelectionActive();
+        albumInputService_->isSelectionActive();
     if (selectionActive != lastSelectionActive_) {
         lastSelectionActive_ = selectionActive;
         scanStartChimeReadyAtMs_ = selectionActive ? 1 : 0;
@@ -413,7 +414,6 @@ void AppController::handleScanAudioState() {
         scanStartChimeQueued_ = false;
         scanStartChimePlaybackSeen_ = false;
     }
-#endif
 }
 
 void AppController::handlePendingMutedUiSound() {
@@ -679,9 +679,9 @@ void AppController::requestSleep(SleepTrigger trigger, const BatterySnapshot *ba
     webServerService_.stop();
     wifiService_.disable();
     (void)audioStopPlayback();
-#if !defined(ZAUBERBOX_INPUT_RC522)
-    qrService_.endDebugPreview();
-#endif
+    if (albumInputService_ != nullptr) {
+        albumInputService_->prepareForSleep();
+    }
 
     if (battery) {
         Serial.printf("App controller: sleep requested (%s) at %umV (%u%%).\n",

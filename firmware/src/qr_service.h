@@ -17,9 +17,11 @@ class QrService : public AlbumInputService {
     bool isSelectionActive() const override;
     bool isHardwareActive() const override;
     bool stopsBeforePlayback() const override;
+    bool usesSelectionStartAudioCue() const override;
     AlbumInputBackend backend() const override;
     bool supportsDebugCameraPreview() const override;
     bool supportsQrAlbumCards() const override;
+    void prepareForSleep() override;
 
     bool submitDecodedPayload(const char *payload);
     bool beginDebugPreview(String *errorMessage = nullptr);
