@@ -2,13 +2,19 @@
 
 #include <Arduino.h>
 
+#include "album_input_service.h"
 #include "battery_service.h"
 #include "button_controller.h"
 #include "led_controller.h"
 #include "media_service.h"
-#include "qr_service.h"
 #include "web_server_service.h"
 #include "wifi_service.h"
+
+#if defined(ZAUBERBOX_INPUT_RC522)
+#include "rc522_service.h"
+#else
+#include "qr_service.h"
+#endif
 
 class AppController {
   public:
@@ -30,12 +36,12 @@ class AppController {
     void handleScanAudioState();
     void handlePendingMutedUiSound();
     void handleMutedStateAudioOutput();
-    void handlePendingQrAlbumStart();
+    void handlePendingAlbumStart();
     void handleLowBatteryPlaybackWarning();
     void handleBatteryPowerPolicy();
     void handleSleepState();
     void handleButtonEvent(const ButtonEvent &event);
-    bool handleQrAlbumScanned(const String &albumId);
+    bool handleAlbumSelected(const String &albumId);
     void noteUiSoundQueued(uint32_t holdMs = 250);
     bool queueMutedUiSound(UiSound sound);
     bool playUiSoundForCurrentState(UiSound sound, uint32_t mutedHoldMs = 250);
@@ -48,14 +54,22 @@ class AppController {
     ButtonController buttonController_;
     LedController ledController_;
     MediaService mediaService_;
+
+#if defined(ZAUBERBOX_INPUT_RC522)
+    Rc522Service rc522Service_;
+#else
     QrService qrService_;
+#endif
+
+    AlbumInputService *albumInputService_ = nullptr;
     WebServerService webServerService_;
     WifiService wifiService_;
-    bool lastScanning_ = false;
-    String pendingQrAlbumId_;
-    uint32_t pendingQrAlbumStartAtMs_ = 0;
-    bool resumeScanningAfterQrError_ = false;
-    uint32_t resumeScanningReadyAtMs_ = 0;
+    bool lastSelectionActive_ = false;
+    String pendingAlbumId_;
+    uint32_t pendingAlbumStartAtMs_ = 0;
+    bool pendingAlbumRequiresInputStop_ = false;
+    bool resumeSelectionAfterError_ = false;
+    uint32_t resumeSelectionReadyAtMs_ = 0;
     uint32_t scanStartChimeReadyAtMs_ = 0;
     uint32_t scanStartChimeMuteReadyAtMs_ = 0;
     uint32_t scanStartChimePlaybackWaitUntilMs_ = 0;

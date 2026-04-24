@@ -5,23 +5,24 @@
 #include <functional>
 #include <vector>
 
+#include "album_input_service.h"
 #include "app_state.h"
 
 class ESP32QRCodeReader;
 class MediaService;
-class QrService {
+class QrService : public AlbumInputService {
   public:
-    using AlbumScanCallback = std::function<bool(const String &albumId)>;
-
-    bool begin(MediaService *mediaService, AlbumScanCallback onAlbumScanned);
-    void update();
+    bool begin(AlbumSelectedCallback onAlbumSelected) override;
+    void update() override;
+    bool isSelectionActive() const override;
+    bool isHardwareActive() const override;
+    bool stopsBeforePlayback() const override;
 
     bool submitDecodedPayload(const char *payload);
-    bool isCameraReady() const;
-    bool isScanning() const;
     bool beginDebugPreview(String *errorMessage = nullptr);
     void endDebugPreview();
     bool captureDebugJpeg(std::vector<uint8_t> *jpegData, int transformIndex, String *errorMessage = nullptr);
+    void setMediaService(MediaService *mediaService);
 
 
   private:
@@ -31,8 +32,6 @@ class QrService {
                                              uint16_t width,
                                              uint16_t height,
                                              uint32_t frameCounter);
-    static bool parseAlbumId(const char *payload, String *albumId);
-
     void pollDecodedQrs();
     bool startScanning();
     void stopScanning();
@@ -62,7 +61,7 @@ class QrService {
     bool ensureDebugPreviewScratch(size_t requiredBytes);
     void releaseDebugPreviewScratch();
 
-    AlbumScanCallback onAlbumScanned_;
+    AlbumSelectedCallback onAlbumSelected_;
     MediaService *mediaService_ = nullptr;
     ESP32QRCodeReader *reader_ = nullptr;
     String lastDecodedPayload_;

@@ -66,10 +66,20 @@ void AppController::begin() {
     }
 
     (void)mediaService_.begin();
-    (void)qrService_.begin(&mediaService_, [this](const String &albumId) {
-        return handleQrAlbumScanned(albumId);
+#if defined(ZAUBERBOX_INPUT_RC522)
+    albumInputService_ = &rc522Service_;
+    (void)rc522Service_.begin([this](const String &albumId) {
+        return handleAlbumSelected(albumId);
+    });
+    webServerService_.begin(&mediaService_, nullptr);
+#else
+    albumInputService_ = &qrService_;
+    qrService_.setMediaService(&mediaService_);
+    (void)qrService_.begin([this](const String &albumId) {
+        return handleAlbumSelected(albumId);
     });
     webServerService_.begin(&mediaService_, &qrService_);
+#endif
     wifiService_.begin([this]() {
         handleWifiConnected();
     }, [this](bool reopenPortal) {
@@ -92,12 +102,14 @@ void AppController::update() {
     batteryService().update();
     wifiService_.update();
     webServerService_.update();
-    qrService_.update();
+    if (albumInputService_) {
+        albumInputService_->update();
+    }
     handlePendingWifiPortalResume();
     handleScanAudioState();
     handlePendingMutedUiSound();
     handleMutedStateAudioOutput();
-    handlePendingQrAlbumStart();
+    handlePendingAlbumStart();
     mediaService_.update();
     handleLowBatteryPlaybackWarning();
     handleBatteryPowerPolicy();
@@ -217,28 +229,39 @@ void AppController::handlePendingWifiPortalResume() {
     wifiService_.resumePortalAfterFailure();
 }
 
-bool AppController::handleQrAlbumScanned(const String &albumId) {
+bool AppController::handleAlbumSelected(const String &albumId) {
     if (albumId.isEmpty()) {
         return false;
     }
 
-    if (!pendingQrAlbumId_.isEmpty()) {
-        Serial.printf("App controller: QR album already pending, ignoring %s\n",
+    if (!pendingAlbumId_.isEmpty()) {
+        Serial.printf("App controller: album already pending, ignoring %s\n",
                       albumId.c_str());
         return false;
     }
 
-    pendingQrAlbumId_ = albumId;
-    pendingQrAlbumStartAtMs_ = 0;
-    resumeScanningAfterQrError_ = false;
-    resumeScanningReadyAtMs_ = 0;
+    pendingAlbumId_ = albumId;
+    pendingAlbumStartAtMs_ = 0;
+    pendingAlbumRequiresInputStop_ =
+        albumInputService_ != nullptr &&
+        albumInputService_->stopsBeforePlayback() &&
+        appStateStore().current() == AppState::QrScan;
+    resumeSelectionAfterError_ = false;
+    resumeSelectionReadyAtMs_ = 0;
 
-    if (!appStateStore().transitionTo(AppState::Idle)) {
-        pendingQrAlbumId_ = "";
-        return false;
+    if (pendingAlbumRequiresInputStop_) {
+        if (!appStateStore().transitionTo(AppState::Idle)) {
+            pendingAlbumId_ = "";
+            pendingAlbumRequiresInputStop_ = false;
+            return false;
+        }
+
+        Serial.printf("App controller: queued album %s for playback after input shutdown.\n",
+                      albumId.c_str());
+        return true;
     }
 
-    Serial.printf("App controller: queued QR album %s for playback after scan shutdown.\n",
+    Serial.printf("App controller: queued album %s for immediate playback.\n",
                   albumId.c_str());
     return true;
 }
@@ -287,7 +310,10 @@ bool AppController::playUiSoundForCurrentState(UiSound sound, uint32_t mutedHold
 bool AppController::shouldMuteOutputInCurrentState() const {
     const AppState state = appStateStore().current();
     if (state == AppState::QrScan) {
-        return qrService_.isScanning() && pendingQrAlbumId_.isEmpty();
+        return albumInputService_ != nullptr &&
+               albumInputService_->stopsBeforePlayback() &&
+               albumInputService_->isSelectionActive() &&
+               pendingAlbumId_.isEmpty();
     }
 
     if (state == AppState::WifiPortal) {
@@ -300,17 +326,27 @@ bool AppController::shouldMuteOutputInCurrentState() const {
 }
 
 void AppController::handleScanAudioState() {
-    const bool scanning = qrService_.isScanning();
-    if (scanning != lastScanning_) {
-        lastScanning_ = scanning;
-        scanStartChimeReadyAtMs_ = scanning ? 1 : 0;
+#if defined(ZAUBERBOX_INPUT_RC522)
+    lastSelectionActive_ = false;
+    scanStartChimeReadyAtMs_ = 0;
+    scanStartChimeMuteReadyAtMs_ = 0;
+    scanStartChimePlaybackWaitUntilMs_ = 0;
+    scanStartChimeQueued_ = false;
+    scanStartChimePlaybackSeen_ = false;
+    return;
+#else
+    const bool selectionActive =
+        albumInputService_ != nullptr && albumInputService_->isSelectionActive();
+    if (selectionActive != lastSelectionActive_) {
+        lastSelectionActive_ = selectionActive;
+        scanStartChimeReadyAtMs_ = selectionActive ? 1 : 0;
         scanStartChimeMuteReadyAtMs_ = 0;
         scanStartChimePlaybackWaitUntilMs_ = 0;
         scanStartChimeQueued_ = false;
         scanStartChimePlaybackSeen_ = false;
     }
 
-    if (!scanning || appStateStore().current() != AppState::QrScan || !pendingQrAlbumId_.isEmpty()) {
+    if (!selectionActive || appStateStore().current() != AppState::QrScan || !pendingAlbumId_.isEmpty()) {
         return;
     }
 
@@ -375,6 +411,7 @@ void AppController::handleScanAudioState() {
         scanStartChimeQueued_ = false;
         scanStartChimePlaybackSeen_ = false;
     }
+#endif
 }
 
 void AppController::handlePendingMutedUiSound() {
@@ -440,47 +477,56 @@ void AppController::handleMutedStateAudioOutput() {
     speakerMuted_ = audioDisableOutputForCameraScan();
 }
 
-void AppController::handlePendingQrAlbumStart() {
-    if (resumeScanningAfterQrError_) {
-        if (millis() >= resumeScanningReadyAtMs_ && !audioIsRunning()) {
-            resumeScanningAfterQrError_ = false;
-            resumeScanningReadyAtMs_ = 0;
+void AppController::handlePendingAlbumStart() {
+    if (resumeSelectionAfterError_) {
+        if (millis() >= resumeSelectionReadyAtMs_ && !audioIsRunning()) {
+            resumeSelectionAfterError_ = false;
+            resumeSelectionReadyAtMs_ = 0;
             (void)appStateStore().transitionTo(AppState::QrScan);
         }
     }
 
-    if (pendingQrAlbumId_.isEmpty()) {
+    if (pendingAlbumId_.isEmpty()) {
         return;
     }
 
-    if (qrService_.isScanning()) {
+    if (pendingAlbumRequiresInputStop_ &&
+        albumInputService_ != nullptr &&
+        albumInputService_->isSelectionActive()) {
         return;
     }
 
-    if (pendingQrAlbumStartAtMs_ == 0) {
+    if (pendingAlbumStartAtMs_ == 0) {
         if (!audioInit()) {
-            Serial.println("App controller: audio init before QR playback failed.");
-            pendingQrAlbumId_ = "";
-            resumeScanningAfterQrError_ = true;
-            resumeScanningReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
+            Serial.println("App controller: audio init before album playback failed.");
+            pendingAlbumId_ = "";
+            if (pendingAlbumRequiresInputStop_) {
+                resumeSelectionAfterError_ = true;
+                resumeSelectionReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
+            }
+            pendingAlbumRequiresInputStop_ = false;
             return;
         }
 
-        pendingQrAlbumStartAtMs_ = millis() + kGeneralAudioReadyDelayMs;
+        pendingAlbumStartAtMs_ = millis() + kGeneralAudioReadyDelayMs;
         return;
     }
 
-    if (millis() < pendingQrAlbumStartAtMs_) {
+    if (millis() < pendingAlbumStartAtMs_) {
         return;
     }
 
-    const String albumId = pendingQrAlbumId_;
-    pendingQrAlbumId_ = "";
-    pendingQrAlbumStartAtMs_ = 0;
+    const String albumId = pendingAlbumId_;
+    const bool resumeSelectionAfterFailure = pendingAlbumRequiresInputStop_;
+    pendingAlbumId_ = "";
+    pendingAlbumStartAtMs_ = 0;
+    pendingAlbumRequiresInputStop_ = false;
 
     if (!mediaService_.playAlbum(albumId.c_str())) {
-        resumeScanningAfterQrError_ = true;
-        resumeScanningReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
+        if (resumeSelectionAfterFailure) {
+            resumeSelectionAfterError_ = true;
+            resumeSelectionReadyAtMs_ = millis() + kQrErrorResumeDelayMs;
+        }
     }
 }
 
@@ -561,7 +607,7 @@ void AppController::handleBatteryPowerPolicy() {
 
     if (state != AppState::Idle ||
         wifiService_.isEnabled() ||
-        !pendingQrAlbumId_.isEmpty()) {
+        !pendingAlbumId_.isEmpty()) {
         return;
     }
 
@@ -582,8 +628,7 @@ void AppController::handleSleepState() {
     }
 
     if (audioIsRunning() ||
-        qrService_.isScanning() ||
-        qrService_.isCameraReady() ||
+        (albumInputService_ != nullptr && albumInputService_->isHardwareActive()) ||
         pendingMutedUiSound_ ||
         scanStartChimeReadyAtMs_ != 0 ||
         scanStartChimeQueued_ ||
@@ -632,7 +677,9 @@ void AppController::requestSleep(SleepTrigger trigger, const BatterySnapshot *ba
     webServerService_.stop();
     wifiService_.disable();
     (void)audioStopPlayback();
+#if !defined(ZAUBERBOX_INPUT_RC522)
     qrService_.endDebugPreview();
+#endif
 
     if (battery) {
         Serial.printf("App controller: sleep requested (%s) at %umV (%u%%).\n",

@@ -7,6 +7,7 @@
 #include <img_converters.h>
 
 #include "app_state.h"
+#include "album_id.h"
 #include "audio_driver.h"
 #include "debug_log.h"
 #include "io_expander.h"
@@ -106,9 +107,8 @@ camera_config_t makeDirectCameraConfig() {
 
 } // namespace
 
-bool QrService::begin(MediaService *mediaService, AlbumScanCallback onAlbumScanned) {
-    mediaService_ = mediaService;
-    onAlbumScanned_ = onAlbumScanned;
+bool QrService::begin(AlbumSelectedCallback onAlbumSelected) {
+    onAlbumSelected_ = onAlbumSelected;
 
     if (!ioExpanderPinMode(kIoExpanderCameraEnablePin, OUTPUT)) {
         Serial.println("QR service: camera enable pin setup failed.");
@@ -122,6 +122,10 @@ bool QrService::begin(MediaService *mediaService, AlbumScanCallback onAlbumScann
     disableCameraHardware();
     available_ = true;
     return true;
+}
+
+void QrService::setMediaService(MediaService *mediaService) {
+    mediaService_ = mediaService;
 }
 
 void QrService::handleRawFrameCapturedStatic(void *context,
@@ -205,25 +209,29 @@ bool QrService::submitDecodedPayload(const char *payload) {
     lastDecodedPayloadAtMs_ = millis();
 
     String albumId;
-    if (!parseAlbumId(payload, &albumId)) {
+    if (!parseAlbumSelectorPayload(payload, &albumId)) {
         Serial.printf("QR service: ignored unsupported payload: %s\n",
                       payload ? payload : "(null)");
         return false;
     }
 
     Serial.printf("QR service: decoded album payload: %s\n", albumId.c_str());
-    if (onAlbumScanned_) {
-        return onAlbumScanned_(albumId);
+    if (onAlbumSelected_) {
+        return onAlbumSelected_(albumId);
     }
     return false;
 }
 
-bool QrService::isCameraReady() const {
+bool QrService::isSelectionActive() const {
+    return scanning_;
+}
+
+bool QrService::isHardwareActive() const {
     return cameraInitialized_;
 }
 
-bool QrService::isScanning() const {
-    return scanning_;
+bool QrService::stopsBeforePlayback() const {
+    return true;
 }
 
 bool QrService::beginDebugPreview(String *errorMessage) {
@@ -396,39 +404,6 @@ bool QrService::isDuplicatePayload(const String &payload) const {
 
     return payload == lastDecodedPayload_ &&
            millis() - lastDecodedPayloadAtMs_ < kDuplicatePayloadWindowMs;
-}
-
-bool QrService::parseAlbumId(const char *payload, String *albumId) {
-    if (!payload || !albumId) {
-        return false;
-    }
-
-    static constexpr char kPrefix[] = "file://";
-    const String payloadString(payload);
-    if (!payloadString.startsWith(kPrefix)) {
-        return false;
-    }
-
-    String candidate = payloadString.substring(strlen(kPrefix));
-    if (candidate.isEmpty()) {
-        return false;
-    }
-
-    if (candidate.endsWith("/")) {
-        candidate.remove(candidate.length() - 1);
-    }
-    if (candidate.isEmpty()) {
-        return false;
-    }
-
-    for (size_t i = 0; i < candidate.length(); i++) {
-        if (!isDigit(candidate.charAt(i))) {
-            return false;
-        }
-    }
-
-    *albumId = candidate;
-    return true;
 }
 
 void QrService::refreshRawFrameCaptureState() {
