@@ -14,6 +14,15 @@ DEBUG_BATTERY_OVERRIDE = {
     "target_mv": 0,
     "activate_at": 0.0,
 }
+SUPPORTED_AUDIO_EXTENSIONS = (".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav")
+MOCK_PLAYBACK = {
+    "album_id": "",
+    "tracks": [],
+    "track_index": 0,
+    "started_at": 0.0,
+    "paused": False,
+    "paused_position_seconds": 0,
+}
 
 # Configurable storage directory
 STORAGE_DIR = "mock_sd"
@@ -22,6 +31,62 @@ PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(PACKAGE_DIR, "..", "..", ".."))
 # Web files are in the 'web' directory at project root
 WEB_DIR = os.path.join(PROJECT_ROOT, "web")
+
+
+def list_album_tracks(album_id):
+    album_path = os.path.join(STORAGE_DIR, album_id)
+    if not os.path.isdir(album_path):
+        return []
+
+    tracks = []
+    for name in sorted(os.listdir(album_path)):
+        lower_name = name.lower()
+        if lower_name.endswith(SUPPORTED_AUDIO_EXTENSIONS):
+            tracks.append(name)
+    return tracks
+
+
+def playback_has_album():
+    return bool(MOCK_PLAYBACK["album_id"]) and bool(MOCK_PLAYBACK["tracks"])
+
+
+def playback_position_seconds(now=None):
+    if not playback_has_album():
+        return 0
+    if MOCK_PLAYBACK["paused"]:
+        return int(MOCK_PLAYBACK["paused_position_seconds"])
+    if now is None:
+        now = time.time()
+    return max(0, int(now - MOCK_PLAYBACK["started_at"]))
+
+
+def set_playback_album(album_id):
+    tracks = list_album_tracks(album_id)
+    if not tracks:
+        return False
+
+    MOCK_PLAYBACK["album_id"] = album_id
+    MOCK_PLAYBACK["tracks"] = tracks
+    MOCK_PLAYBACK["track_index"] = 0
+    MOCK_PLAYBACK["started_at"] = time.time()
+    MOCK_PLAYBACK["paused"] = False
+    MOCK_PLAYBACK["paused_position_seconds"] = 0
+    return True
+
+
+def step_playback(delta):
+    if not playback_has_album():
+        return False
+
+    next_index = MOCK_PLAYBACK["track_index"] + delta
+    if next_index < 0 or next_index >= len(MOCK_PLAYBACK["tracks"]):
+        return False
+
+    MOCK_PLAYBACK["track_index"] = next_index
+    MOCK_PLAYBACK["started_at"] = time.time()
+    MOCK_PLAYBACK["paused"] = False
+    MOCK_PLAYBACK["paused_position_seconds"] = 0
+    return True
 
 @app.route('/')
 def index():
@@ -178,9 +243,50 @@ def status():
         is_low = voltage_mv <= 3600
         is_critical = voltage_mv <= 3450
 
+    playback_mode = "stopped"
+    app_state = "QrScan"
+    app_state_display = "QR Scan"
+    track_name = ""
+    track_index = 0
+    track_count = 0
+    position_seconds = 0
+    duration_seconds = 0
+
+    if playback_has_album():
+        playback_mode = "paused" if MOCK_PLAYBACK["paused"] else "playing"
+        app_state = "Paused" if MOCK_PLAYBACK["paused"] else "Playing"
+        app_state_display = app_state
+        track_index = MOCK_PLAYBACK["track_index"] + 1
+        track_count = len(MOCK_PLAYBACK["tracks"])
+        track_name = MOCK_PLAYBACK["tracks"][MOCK_PLAYBACK["track_index"]]
+        position_seconds = playback_position_seconds(now)
+        duration_seconds = 180  # Mock 3 minutes
+
     return jsonify({
-        "app_state": "QrScan",
+        "app_state": app_state,
+        "app_state_display": app_state_display,
         "wifi_mode": "Connected",
+        "input": {
+            "backend": "qr",
+            "selection_state_label": "QR Scan",
+            "selection_active": not playback_has_album(),
+            "hardware_active": not playback_has_album(),
+            "stops_before_playback": True,
+            "capabilities": {
+                "debug_camera_preview": True,
+                "qr_album_cards": True,
+            },
+        },
+        "playback": {
+            "mode": playback_mode,
+            "has_album": playback_has_album(),
+            "album_id": MOCK_PLAYBACK["album_id"],
+            "track_name": track_name,
+            "track_index": track_index,
+            "track_count": track_count,
+            "position_seconds": position_seconds,
+            "duration_seconds": duration_seconds,
+        },
         "battery": {
             "initialized": True,
             "has_reading": True,
@@ -204,6 +310,31 @@ def status():
             }
         }
     })
+
+
+@app.route('/api/playback/play', methods=['POST'])
+def playback_play():
+    data = request.get_json(silent=True) or {}
+    album_id = secure_filename(data.get('album_id', ''))
+    if not album_id:
+        return jsonify({"success": False, "error": "album_id is required"}), 400
+    if not set_playback_album(album_id):
+        return jsonify({"success": False, "error": "Failed to queue album playback"}), 409
+    return jsonify({"success": True})
+
+
+@app.route('/api/playback/previous', methods=['POST'])
+def playback_previous():
+    if not step_playback(-1):
+        return jsonify({"success": False, "error": "Failed to start previous track"}), 409
+    return jsonify({"success": True})
+
+
+@app.route('/api/playback/next', methods=['POST'])
+def playback_next():
+    if not step_playback(1):
+        return jsonify({"success": False, "error": "Failed to start next track"}), 409
+    return jsonify({"success": True})
 
 @app.route('/api/mkdir', methods=['POST'])
 def mkdir():
@@ -283,3 +414,14 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+@app.route('/api/playback/toggle-pause', methods=['POST'])
+def playback_toggle_pause():
+    if not playback_has_album():
+        return jsonify({"success": False, "error": "No album playing"}), 409
+    MOCK_PLAYBACK["paused"] = not MOCK_PLAYBACK["paused"]
+    if MOCK_PLAYBACK["paused"]:
+        MOCK_PLAYBACK["paused_position_seconds"] = playback_position_seconds()
+    else:
+        MOCK_PLAYBACK["started_at"] = time.time() - MOCK_PLAYBACK["paused_position_seconds"]
+    return jsonify({"success": True})

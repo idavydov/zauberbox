@@ -30,6 +30,76 @@ body {
 }
 
 /* Dashboard Styles */
+.playback-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: var(--pico-secondary-focus);
+    padding: 0.5rem 1rem;
+    border-radius: var(--pico-border-radius);
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--pico-muted-border-color);
+    grid-column: 1 / -1;
+}
+@media (max-width: 576px) {
+    .playback-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    .playback-mini-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+.playback-mini-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    overflow: hidden;
+    white-space: nowrap;
+}
+.playback-emoji {
+    font-size: 1.1rem;
+    flex: 0 0 auto;
+}
+.playback-text {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.playback-time {
+    color: var(--pico-muted-color);
+    font-size: 0.85rem;
+    flex: 0 0 auto;
+}
+.playback-mini-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.playback-mini-controls button {
+    margin: 0;
+    padding: 4px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+}
+.playback-mini-controls button:hover {
+    background: var(--pico-secondary-hover);
+    color: var(--pico-primary);
+}
+.playback-mini-controls button svg {
+    width: 18px;
+    height: 18px;
+}
+
 .nav-battery {
     align-self: center;
     display: inline-flex;
@@ -69,6 +139,59 @@ body {
     opacity: 0.7;
 }
 
+header nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: nowrap; /* Default: no wrap */
+}
+
+.nav-btn-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.nav-btn-group button {
+    margin-bottom: 0;
+}
+
+/* Responsive Navigation Stacking */
+@media (max-width: 991px) {
+    header nav {
+        display: grid;
+        grid-template-columns: 1fr auto auto; /* left, battery, dropdown */
+        align-items: center;
+        column-gap: 0.75rem;
+        row-gap: 0.5rem;
+    }
+    header ul#nav-left {
+        grid-column: 1;
+        grid-row: 1;
+        width: 100%;
+        margin-bottom: 0;
+    }
+    header ul#nav-right {
+        display: contents; /* Makes LI children direct grid items of NAV */
+    }
+    .nav-battery {
+        grid-column: 2;
+        grid-row: 1;
+        margin-right: 0;
+        margin-left: auto;
+    }
+    .nav-dropdown-li {
+        grid-column: 3;
+        grid-row: 1;
+    }
+    .nav-btn-group {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        width: 100%;
+        justify-content: center;
+        margin-top: 0.25rem;
+    }
+}
+
 .nav-dropdown summary::after {
     display: none !important;
 }
@@ -77,6 +200,10 @@ body {
     align-items: center;
     justify-content: center;
     margin-bottom: 0;
+}
+.nav-dropdown ul {
+    left: auto !important;
+    right: 0 !important;
 }
 
 .dir-grid {
@@ -123,7 +250,7 @@ body {
     display: block;
 }
 .dir-card { position: relative; }
-.dir-card .delete-btn, .dir-card .select-overlay {
+.dir-card .delete-btn, .dir-card .card-play-btn, .dir-card .select-overlay {
     position: absolute;
     top: 0.5rem;
     background: var(--pico-card-background-color);
@@ -139,7 +266,8 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 .dir-card .delete-btn { right: 0.5rem; color: var(--pico-error-background); }
-.dir-card .delete-btn:hover { transform: scale(1.1); }
+.dir-card .card-play-btn { left: 0.5rem; color: var(--pico-primary); }
+.dir-card .delete-btn:hover, .dir-card .card-play-btn:hover { transform: scale(1.1); }
 
 .dir-card .select-overlay { left: 0.5rem; opacity: 0; color: var(--pico-primary); }
 .selection-mode .dir-card .select-overlay { opacity: 1; }
@@ -195,6 +323,35 @@ body {
         grid-template-columns: 2fr 1fr;
         align-items: start;
     }
+}
+
+/* Toast Notification */
+.toast-container {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--pico-card-background-color);
+    border: 1px solid var(--pico-primary);
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--pico-border-radius);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    z-index: 1000;
+    animation: slide-up 0.3s ease-out;
+    font-weight: 600;
+}
+.toast-error {
+    border-color: var(--pico-error-background);
+    color: var(--pico-error-background);
+}
+.toast-container.fade-out {
+    opacity: 0;
+    transform: translate(-50%, 1rem);
+    transition: opacity 0.5s, transform 0.5s;
+}
+@keyframes slide-up {
+    from { opacity: 0; transform: translate(-50%, 1rem); }
+    to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* File List Styles */

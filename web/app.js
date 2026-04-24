@@ -61,6 +61,10 @@ const ICONS = {
     file: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/></svg>`,
     download: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download-icon lucide-download"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>`,
     check: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-icon lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`,
+    play: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play-icon lucide-play"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>`,
+    pause: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause-icon lucide-pause"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>`,
+    skipBack: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-back-icon lucide-skip-back"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg>`,
+    skipForward: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward-icon lucide-skip-forward"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>`,
     menu: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu-icon lucide-menu"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>`,
     info: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info-icon lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
     batteryFull: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-battery-full-icon lucide-battery-full"><path d="M10 10v4"/><path d="M14 10v4"/><path d="M22 14v-4"/><path d="M6 10v4"/><rect x="2" y="6" width="16" height="12" rx="2"/></svg>`,
@@ -107,6 +111,122 @@ function supportsQrAlbumCards() {
         return true;
     }
     return capabilities.qr_album_cards !== false;
+}
+
+function playbackStatus() {
+    return state.deviceStatus?.playback || null;
+}
+
+function formatPlaybackSeconds(totalSeconds) {
+    if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
+        return '0:00';
+    }
+
+    const seconds = Math.floor(totalSeconds % 60);
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const minutes = totalMinutes % 60;
+    const hours = Math.floor(totalMinutes / 60);
+
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function playbackModeLabel(mode) {
+    switch (mode) {
+        case 'playing':
+            return 'Playing';
+        case 'paused':
+            return 'Paused';
+        default:
+            return 'Stopped';
+    }
+}
+
+function renderPlaybackBar() {
+    const playback = playbackStatus();
+    if (!playback || !playback.has_album || playback.mode === 'stopped') {
+        return '';
+    }
+
+    const isPlaying = playback.mode === 'playing';
+    const modeEmoji = isPlaying ? '▶️' : '⏸️';
+    const albumTrack = `${playback.album_id}/${playback.track_name}`;
+    const timeInfo = `${formatPlaybackSeconds(playback.position_seconds)} / ${formatPlaybackSeconds(playback.duration_seconds)}`;
+
+    return `
+        <div class="playback-bar">
+            <span class="playback-mini-info" title="${escapeHtml(albumTrack)}">
+                <span class="playback-emoji">${modeEmoji}</span>
+                <span class="playback-text">${escapeHtml(albumTrack)}</span>
+                <span class="playback-time">${timeInfo}</span>
+            </span>
+            <div class="playback-mini-controls">
+                <button class="secondary outline" onclick="handlePreviousTrack()" title="Previous track">${ICONS.skipBack}</button>
+                <button class="secondary outline" onclick="handleTogglePause()" title="${isPlaying ? 'Pause' : 'Resume'}">${isPlaying ? ICONS.pause : ICONS.play}</button>
+                <button class="secondary outline" onclick="handleNextTrack()" title="Next track">${ICONS.skipForward}</button>
+            </div>
+        </div>
+    `;
+}
+
+async function sendPlaybackRequest(endpoint, body = null) {
+    await fetchAPI(endpoint, {
+        method: 'POST',
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+    });
+    await refreshDeviceStatus();
+}
+
+async function handlePlayAlbum(albumId) {
+    try {
+        await sendPlaybackRequest('/playback/play', { album_id: albumId });
+    } catch (err) {
+        showToast(err.message || 'Failed to start album playback.', 'error');
+    }
+}
+
+async function handlePreviousTrack() {
+    try {
+        await sendPlaybackRequest('/playback/previous');
+    } catch (err) {
+        // Just show toast for navigation errors
+        showToast(err.message || 'Already at the beginning.', 'info');
+    }
+}
+
+async function handleNextTrack() {
+    try {
+        await sendPlaybackRequest('/playback/next');
+    } catch (err) {
+        // Just show toast for navigation errors
+        showToast(err.message || 'End of album reached.', 'info');
+    }
+}
+
+async function handleTogglePause() {
+    try {
+        await sendPlaybackRequest('/playback/toggle-pause');
+    } catch (err) {
+        showToast(err.message || 'Failed to toggle playback.', 'error');
+    }
+}
+
+function showToast(message, type = 'info') {
+    const existing = document.querySelector('.toast-container');
+    if (existing) existing.remove();
+
+    const container = document.createElement('div');
+    container.className = `toast-container toast-${type}`;
+    container.textContent = message;
+    document.body.appendChild(container);
+
+    setTimeout(() => {
+        container.classList.add('fade-out');
+        setTimeout(() => container.remove(), 500);
+    }, 3000);
 }
 
 function toggleSelectionMode() {
@@ -1453,7 +1573,7 @@ function render() {
                 <span class="nav-battery-icon" aria-hidden="true">${batteryIcon}</span>
                 <span class="nav-battery-text">${escapeHtml(batterySummary)}</span>
             </li>
-            <li>
+            <li class="nav-dropdown-li">
                 <details class="dropdown nav-dropdown" dir="rtl">
                     <summary class="contrast outline" style="padding: 4px 8px; list-style: none;">${ICONS.menu}</summary>
                     <ul dir="ltr">
@@ -1465,6 +1585,7 @@ function render() {
         `;
 
         let html = `<div class="${state.selectionMode ? 'selection-mode' : ''}">`;
+        html += renderPlaybackBar();
         html += `
             <div class="header-row">
                 <h2>Directories</h2>
@@ -1479,7 +1600,10 @@ function render() {
             const secondaryText = dir.title || dir.first_mp3 || 'Empty';
             html += `
                 <div class="dir-card ${isSelected ? 'selected' : ''}" onclick="${state.selectionMode ? `toggleDirSelection('${dir.name}')` : `enterDirectory('${dir.name}')`}">
-                    ${state.selectionMode ? `<div class="select-overlay">${ICONS.check}</div>` : `<div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>`}
+                    ${state.selectionMode ? `<div class="select-overlay">${ICONS.check}</div>` : `
+                        <div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>
+                        <div class="card-play-btn" onclick="event.stopPropagation(); handlePlayAlbum('${dir.name}')" title="Play Album">${ICONS.play}</div>
+                    `}
                     ${dir.cover ? `<img src="${dir.cover}">` : `<div class="placeholder-img"><span>No Cover</span></div>`}
                     <span class="name">${dir.name}</span>
                     <span class="first-mp3">${escapeHtml(secondaryText)}</span>
@@ -1746,6 +1870,8 @@ function render() {
     } else {
         const uploadState = state.upload;
         const uploadInProgress = Boolean(uploadState);
+        const playback = playbackStatus();
+        const isCurrentAlbumPlaying = playback?.has_album && playback.album_id === state.currentPath;
         const totalBytes = uploadState ? Math.max(uploadState.totalBytes, 1) : 1;
         const uploadedBytes = uploadState
             ? Math.min(
@@ -1757,19 +1883,32 @@ function render() {
             ? Math.round((uploadedBytes / totalBytes) * 100)
             : 0;
 
+        const batterySummary = batterySummaryText();
+        const batteryState = batteryStateClass();
+		const batteryDetail = state.deviceStatusError ? `title="${escapeHtml(state.deviceStatusError)}"` : '';
+        const batteryIcon = ICONS[batteryIconName()];
+
         navLeft.innerHTML = `
             <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="loadDashboard()">${ICONS.back}</button></li>
             <li><strong>${state.currentPath}</strong></li>
         `;
         navRight.innerHTML = `
-            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleSetTitle()" title="Set album title">${ICONS.edit} ${state.files.some(f => f.name.toLowerCase() === 'title.txt') ? 'Edit Title' : 'Set Title'}</button></li>
-            ${supportsQrAlbumCards()
-                ? `<li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button></li>`
-                : ''}
+            <li class="nav-battery ${batteryState}" ${batteryDetail}>
+                <span class="nav-battery-icon" aria-hidden="true">${batteryIcon}</span>
+                <span class="nav-battery-text">${escapeHtml(batterySummary)}</span>
+            </li>
+            <li class="nav-btn-group">
+                <button class="secondary outline" style="padding: 4px 8px;" onclick="handlePlayAlbum('${state.currentPath}')" title="${isCurrentAlbumPlaying ? 'Restart album playback' : 'Start album playback'}">${ICONS.play} ${isCurrentAlbumPlaying ? 'Restart Album' : 'Play Album'}</button>
+                <button class="secondary outline" style="padding: 4px 8px;" onclick="handleSetTitle()" title="Set album title">${ICONS.edit} ${state.files.some(f => f.name.toLowerCase() === 'title.txt') ? 'Edit Title' : 'Set Title'}</button>
+                ${supportsQrAlbumCards()
+                    ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button>`
+                    : ''}
+            </li>
         `;
         
         let html = `
             <div class="dir-container">
+                ${renderPlaybackBar()}
                 <section>
                     <div class="header-row">
                         <h2>Contents</h2>
