@@ -1,6 +1,7 @@
 #pragma once
 
 #include <FS.h>
+#include <functional>
 #include <time.h>
 #include <WebServer.h>
 
@@ -9,7 +10,15 @@
 
 class WebServerService {
   public:
-    void begin(MediaService *mediaService, AlbumInputService *albumInputService);
+    using PlayAlbumCallback = std::function<bool(const String &albumId)>;
+    using PlaybackActionCallback = std::function<bool()>;
+
+    void begin(MediaService *mediaService,
+               AlbumInputService *albumInputService,
+               PlayAlbumCallback onPlayAlbum,
+               PlaybackActionCallback onPreviousTrack,
+               PlaybackActionCallback onNextTrack,
+               PlaybackActionCallback onTogglePause);
     void update();
     void stop();
 
@@ -49,12 +58,20 @@ class WebServerService {
     void handleDebugLogs();
     void handleDebugBatteryOverride();
     void handleStatus();
+    void handlePlayAlbum();
+    void handlePreviousTrack();
+    void handleNextTrack();
+    void handleTogglePause();
     bool supportsDebugCameraPreview() const;
     AlbumInputBackend currentBackend() const;
 
     WebServer server_{80};
     MediaService *mediaService_ = nullptr;
     AlbumInputService *albumInputService_ = nullptr;
+    PlayAlbumCallback onPlayAlbum_;
+    PlaybackActionCallback onPreviousTrack_;
+    PlaybackActionCallback onNextTrack_;
+    PlaybackActionCallback onTogglePause_;
     bool routesRegistered_ = false;
     bool running_ = false;
     File uploadFile_;

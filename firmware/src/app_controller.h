@@ -46,6 +46,10 @@ class AppController {
     bool queueMutedUiSound(UiSound sound);
     bool playUiSoundForCurrentState(UiSound sound, uint32_t mutedHoldMs = 250);
     bool shouldMuteOutputInCurrentState() const;
+    bool requestWebAlbumPlayback(const String &albumId);
+    bool requestWebPreviousTrack();
+    bool requestWebNextTrack();
+    bool requestWebTogglePause();
     bool canUseBatteryPolicy(const BatterySnapshot &battery) const;
     bool shouldEnterCriticalBatterySleep(const BatterySnapshot &battery, AppState state) const;
     void requestSleep(SleepTrigger trigger, const BatterySnapshot *battery = nullptr);

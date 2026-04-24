@@ -16,6 +16,23 @@ enum class UiSound : uint8_t {
     LowBattery,
 };
 
+enum class MediaPlaybackMode : uint8_t {
+    Stopped,
+    Playing,
+    Paused,
+};
+
+struct MediaPlaybackSnapshot {
+    MediaPlaybackMode mode = MediaPlaybackMode::Stopped;
+    bool hasAlbum = false;
+    String albumId;
+    String trackName;
+    size_t trackIndex = 0;
+    size_t trackCount = 0;
+    uint32_t positionSeconds = 0;
+    uint32_t durationSeconds = 0;
+};
+
 class MediaService {
   public:
     bool begin();
@@ -36,11 +53,13 @@ class MediaService {
     bool isStorageReady() const;
     bool hasActiveAlbum() const;
     bool isAlbumPlaying() const;
+    MediaPlaybackSnapshot snapshot() const;
 
   private:
     static void handlePlaybackFinishedStatic(AudioPlaybackEvent event);
     static const char *uiSoundPath(UiSound sound);
     static bool isSupportedAudioFile(const String &path);
+    static String baseNameForPath(const String &path);
     bool startQueuedTransientUiSound();
 
     bool mountStorage();

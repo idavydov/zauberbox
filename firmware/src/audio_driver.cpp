@@ -595,6 +595,10 @@ uint32_t audioCurrentTimeSeconds() {
     return gFilePlayer.getAudioCurrentTime();
 }
 
+uint32_t audioCurrentDurationSeconds() {
+    return gFilePlayer.getAudioFileDuration();
+}
+
 uint32_t audioCurrentFilePosition() {
     return gFilePlayer.getAudioFilePosition();
 }

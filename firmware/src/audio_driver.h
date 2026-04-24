@@ -26,6 +26,7 @@ bool audioIsRunning();
 bool audioSetVolume(uint8_t volume);
 uint8_t audioVolume();
 uint32_t audioCurrentTimeSeconds();
+uint32_t audioCurrentDurationSeconds();
 uint32_t audioCurrentFilePosition();
 bool audioSeekToFilePosition(uint32_t filePosition);
 void audioSetPlaybackFinishedCallback(AudioPlaybackFinishedCallback callback);

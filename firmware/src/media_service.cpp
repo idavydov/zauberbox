@@ -82,6 +82,25 @@ bool MediaService::isAlbumPlaying() const {
     return hasActiveAlbum() && !paused_;
 }
 
+MediaPlaybackSnapshot MediaService::snapshot() const {
+    MediaPlaybackSnapshot snapshot;
+    snapshot.mode = paused_ ? MediaPlaybackMode::Paused
+                            : (hasActiveAlbum() ? MediaPlaybackMode::Playing
+                                                : MediaPlaybackMode::Stopped);
+    snapshot.hasAlbum = hasActiveAlbum();
+    snapshot.albumId = currentAlbumId_;
+    snapshot.trackCount = trackPaths_.size();
+
+    if (snapshot.hasAlbum) {
+        snapshot.trackIndex = currentTrackIndex_ + 1;
+        snapshot.trackName = baseNameForPath(trackPaths_[currentTrackIndex_]);
+        snapshot.positionSeconds = paused_ ? pausedAtSeconds_ : audioCurrentTimeSeconds();
+        snapshot.durationSeconds = audioCurrentDurationSeconds();
+    }
+
+    return snapshot;
+}
+
 bool MediaService::playUiSound(UiSound sound) {
     const char *path = uiSoundPath(sound);
     if (!path) {
@@ -308,6 +327,14 @@ bool MediaService::isSupportedAudioFile(const String &path) {
     }
 
     return false;
+}
+
+String MediaService::baseNameForPath(const String &path) {
+    const int slashIndex = path.lastIndexOf('/');
+    if (slashIndex < 0) {
+        return path;
+    }
+    return path.substring(static_cast<unsigned>(slashIndex + 1));
 }
 
 bool MediaService::mountStorage() {

@@ -71,14 +71,40 @@ void AppController::begin() {
     (void)rc522Service_.begin([this](const String &albumId) {
         return handleAlbumSelected(albumId);
     });
-    webServerService_.begin(&mediaService_, albumInputService_);
+    webServerService_.begin(&mediaService_,
+                            albumInputService_,
+                            [this](const String &albumId) {
+                                return requestWebAlbumPlayback(albumId);
+                            },
+                            [this]() {
+                                return requestWebPreviousTrack();
+                            },
+                            [this]() {
+                                return requestWebNextTrack();
+                            },
+                            [this]() {
+                                return requestWebTogglePause();
+                            });
 #else
     albumInputService_ = &qrService_;
     qrService_.setMediaService(&mediaService_);
     (void)qrService_.begin([this](const String &albumId) {
         return handleAlbumSelected(albumId);
     });
-    webServerService_.begin(&mediaService_, albumInputService_);
+    webServerService_.begin(&mediaService_,
+                            albumInputService_,
+                            [this](const String &albumId) {
+                                return requestWebAlbumPlayback(albumId);
+                            },
+                            [this]() {
+                                return requestWebPreviousTrack();
+                            },
+                            [this]() {
+                                return requestWebNextTrack();
+                            },
+                            [this]() {
+                                return requestWebTogglePause();
+                            });
 #endif
     wifiService_.begin([this]() {
         handleWifiConnected();
@@ -305,6 +331,22 @@ bool AppController::playUiSoundForCurrentState(UiSound sound, uint32_t mutedHold
         noteUiSoundQueued();
     }
     return true;
+}
+
+bool AppController::requestWebAlbumPlayback(const String &albumId) {
+    return handleAlbumSelected(albumId);
+}
+
+bool AppController::requestWebPreviousTrack() {
+    return mediaService_.previousTrackOrRestart();
+}
+
+bool AppController::requestWebNextTrack() {
+    return mediaService_.nextTrack();
+}
+
+bool AppController::requestWebTogglePause() {
+    return mediaService_.togglePause();
 }
 
 bool AppController::shouldMuteOutputInCurrentState() const {

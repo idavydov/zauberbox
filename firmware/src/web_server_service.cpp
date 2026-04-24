@@ -172,9 +172,17 @@ uint64_t fnv1a64UpdateUint64(uint64_t hash, uint64_t value) {
 } // namespace
 
 void WebServerService::begin(MediaService *mediaService,
-                             AlbumInputService *albumInputService) {
+                             AlbumInputService *albumInputService,
+                             PlayAlbumCallback onPlayAlbum,
+                             PlaybackActionCallback onPreviousTrack,
+                             PlaybackActionCallback onNextTrack,
+                             PlaybackActionCallback onTogglePause) {
     mediaService_ = mediaService;
     albumInputService_ = albumInputService;
+    onPlayAlbum_ = std::move(onPlayAlbum);
+    onPreviousTrack_ = std::move(onPreviousTrack);
+    onNextTrack_ = std::move(onNextTrack);
+    onTogglePause_ = std::move(onTogglePause);
     if (!routesRegistered_) {
         registerRoutes();
         routesRegistered_ = true;
@@ -264,6 +272,18 @@ void WebServerService::registerRoutes() {
     });
     server_.on("/api/status", HTTP_GET, [this]() {
         handleStatus();
+    });
+    server_.on("/api/playback/play", HTTP_POST, [this]() {
+        handlePlayAlbum();
+    });
+    server_.on("/api/playback/previous", HTTP_POST, [this]() {
+        handlePreviousTrack();
+    });
+    server_.on("/api/playback/next", HTTP_POST, [this]() {
+        handleNextTrack();
+    });
+    server_.on("/api/playback/toggle-pause", HTTP_POST, [this]() {
+        handleTogglePause();
     });
 
     for (const char *asset : {"/style.css", "/app.js", "/pico.min.css", "/qrcode.min.js"}) {
@@ -1098,10 +1118,12 @@ void WebServerService::handleStatus() {
     const AppRuntimeSnapshot runtime = appStateStore().snapshot();
     const BatterySnapshot battery = batteryService().snapshot();
     const BatteryDebugOverrideStatus debugOverride = batteryService().debugVoltageOverrideStatus();
+    const MediaPlaybackSnapshot playback = mediaService_ ? mediaService_->snapshot()
+                                                         : MediaPlaybackSnapshot{};
     const uint32_t now = millis();
     const AlbumInputBackend backend = currentBackend();
 
-    StaticJsonDocument<768> response;
+    StaticJsonDocument<1536> response;
     response["app_state"] = AppStateStore::stateName(runtime.appState);
     response["app_state_display"] = appStateDisplayName(runtime.appState, backend);
     response["wifi_mode"] = AppStateStore::wifiModeName(runtime.wifiMode);
@@ -1118,6 +1140,26 @@ void WebServerService::handleStatus() {
     inputCapabilitiesObject["debug_camera_preview"] = supportsDebugCameraPreview();
     inputCapabilitiesObject["qr_album_cards"] =
         albumInputService_ != nullptr && albumInputService_->supportsQrAlbumCards();
+
+    JsonObject playbackObject = response.createNestedObject("playback");
+    switch (playback.mode) {
+        case MediaPlaybackMode::Stopped:
+            playbackObject["mode"] = "stopped";
+            break;
+        case MediaPlaybackMode::Playing:
+            playbackObject["mode"] = "playing";
+            break;
+        case MediaPlaybackMode::Paused:
+            playbackObject["mode"] = "paused";
+            break;
+    }
+    playbackObject["has_album"] = playback.hasAlbum;
+    playbackObject["album_id"] = playback.albumId;
+    playbackObject["track_name"] = playback.trackName;
+    playbackObject["track_index"] = playback.trackIndex;
+    playbackObject["track_count"] = playback.trackCount;
+    playbackObject["position_seconds"] = playback.positionSeconds;
+    playbackObject["duration_seconds"] = playback.durationSeconds;
 
     JsonObject batteryObject = response.createNestedObject("battery");
     batteryObject["initialized"] = battery.initialized;
@@ -1151,4 +1193,61 @@ void WebServerService::handleStatus() {
     server_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     server_.sendHeader("Pragma", "no-cache");
     server_.send(200, "application/json", body);
+}
+
+void WebServerService::handlePlayAlbum() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    const String albumId = readJsonString(server_, "album_id");
+    if (albumId.isEmpty()) {
+        sendJsonError(400, "album_id is required");
+        return;
+    }
+    if (!onPlayAlbum_ || !onPlayAlbum_(albumId)) {
+        sendJsonError(409, "Failed to queue album playback");
+        return;
+    }
+
+    server_.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebServerService::handlePreviousTrack() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    if (!onPreviousTrack_ || !onPreviousTrack_()) {
+        sendJsonError(409, "Failed to start previous track");
+        return;
+    }
+
+    server_.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebServerService::handleNextTrack() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    if (!onNextTrack_ || !onNextTrack_()) {
+        sendJsonError(409, "Failed to start next track");
+        return;
+    }
+
+    server_.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebServerService::handleTogglePause() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+
+    if (!onTogglePause_ || !onTogglePause_()) {
+        sendJsonError(409, "Failed to toggle pause");
+        return;
+    }
+
+    server_.send(200, "application/json", "{\"success\":true}");
 }
