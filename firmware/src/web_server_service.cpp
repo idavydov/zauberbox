@@ -616,7 +616,7 @@ void WebServerService::handleListAlbums() {
         return;
     }
 
-    DynamicJsonDocument doc(2048);
+    DynamicJsonDocument doc(32768);
     JsonArray result = doc.to<JsonArray>();
     File root = SD_MMC.open("/");
     if (!root || !root.isDirectory()) {
@@ -1123,7 +1123,7 @@ void WebServerService::handleStatus() {
     const uint32_t now = millis();
     const AlbumInputBackend backend = currentBackend();
 
-    StaticJsonDocument<1536> response;
+    StaticJsonDocument<2048> response;
     response["app_state"] = AppStateStore::stateName(runtime.appState);
     response["app_state_display"] = appStateDisplayName(runtime.appState, backend);
     response["wifi_mode"] = AppStateStore::wifiModeName(runtime.wifiMode);
