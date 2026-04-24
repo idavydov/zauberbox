@@ -33,12 +33,22 @@ class ESP32QRCodeReader
 {
   friend void qrCodeDetectTask(void *taskData);
 
+public:
+  using RawFrameObserver = void (*)(void *context,
+                                    const uint8_t *buffer,
+                                    size_t length,
+                                    uint16_t width,
+                                    uint16_t height,
+                                    uint32_t frameCounter);
+
 private:
   TaskHandle_t qrCodeTaskHandler;
   CameraPins pins;
   framesize_t frameSize;
   volatile bool stopRequested = false;
   volatile bool taskRunning = false;
+  RawFrameObserver rawFrameObserver = nullptr;
+  void *rawFrameObserverContext = nullptr;
 
 public:
   camera_config_t cameraConfig;
@@ -63,6 +73,7 @@ public:
   void end();
 
   void setDebug(bool);
+  void setRawFrameObserver(RawFrameObserver observer, void *context);
 
   static void applyCrossSharpen7(const uint8_t *src, uint8_t *dst, int width, int height);
   static void applyCrossKernel(const uint8_t *src, uint8_t *dst, int width, int height, int centerWeight, int divisor = 1, int offset = 0);

@@ -66,7 +66,7 @@ void AppController::begin() {
     }
 
     (void)mediaService_.begin();
-    (void)qrService_.begin([this](const String &albumId) {
+    (void)qrService_.begin(&mediaService_, [this](const String &albumId) {
         return handleQrAlbumScanned(albumId);
     });
     webServerService_.begin(&mediaService_, &qrService_);

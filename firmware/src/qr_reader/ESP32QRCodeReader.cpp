@@ -543,6 +543,16 @@ void qrCodeDetectTask(void *taskData)
     bool foundInFrame = false;
     int lastCandidateCount = 0;
 
+    if (self->rawFrameObserver != nullptr)
+    {
+      self->rawFrameObserver(self->rawFrameObserverContext,
+                             fb->buf,
+                             fb->len,
+                             fb->width,
+                             fb->height,
+                             frameCounter);
+    }
+
     image = quirc_begin(q, NULL, NULL);
     applyFilterPass(filterPass, fb->buf, image, fb->width, fb->height);
     quirc_end(q);
@@ -706,4 +716,10 @@ void ESP32QRCodeReader::end()
 void ESP32QRCodeReader::setDebug(bool on)
 {
   debug = on;
+}
+
+void ESP32QRCodeReader::setRawFrameObserver(RawFrameObserver observer, void *context)
+{
+  rawFrameObserver = observer;
+  rawFrameObserverContext = context;
 }

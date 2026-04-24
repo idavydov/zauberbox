@@ -1,13 +1,16 @@
 #include "qr_service.h"
 
+#include <SD_MMC.h>
 #include <esp_camera.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 #include <img_converters.h>
 
 #include "app_state.h"
 #include "audio_driver.h"
 #include "debug_log.h"
 #include "io_expander.h"
+#include "media_service.h"
 #include "qr_reader/ESP32QRCodeReader.h"
 
 namespace {
@@ -33,6 +36,10 @@ constexpr BaseType_t kQrDecodeCore = 1;
 constexpr uint32_t kQrScanTimeoutMs = 180000;
 constexpr uint32_t kDuplicatePayloadWindowMs = 1500;
 constexpr framesize_t kQrFrameSize = FRAMESIZE_QVGA;
+constexpr uint32_t kRawFrameCaptureEveryNthFrame = 20;
+constexpr char kRawFrameCaptureMarkerPath[] = "/collect_qr_frames";
+constexpr char kRawFrameCaptureOutputDir[] = "/debug_frames";
+constexpr char kRawFrameCaptureTempSuffix[] = ".tmp";
 
 const char *qrFrameSizeName(framesize_t frameSize) {
     switch (frameSize) {
@@ -99,7 +106,8 @@ camera_config_t makeDirectCameraConfig() {
 
 } // namespace
 
-bool QrService::begin(AlbumScanCallback onAlbumScanned) {
+bool QrService::begin(MediaService *mediaService, AlbumScanCallback onAlbumScanned) {
+    mediaService_ = mediaService;
     onAlbumScanned_ = onAlbumScanned;
 
     if (!ioExpanderPinMode(kIoExpanderCameraEnablePin, OUTPUT)) {
@@ -114,6 +122,23 @@ bool QrService::begin(AlbumScanCallback onAlbumScanned) {
     disableCameraHardware();
     available_ = true;
     return true;
+}
+
+void QrService::handleRawFrameCapturedStatic(void *context,
+                                             const uint8_t *buffer,
+                                             size_t length,
+                                             uint16_t width,
+                                             uint16_t height,
+                                             uint32_t frameCounter) {
+    if (!context) {
+        return;
+    }
+
+    static_cast<QrService *>(context)->handleRawFrameCaptured(buffer,
+                                                              length,
+                                                              width,
+                                                              height,
+                                                              frameCounter);
 }
 
 void QrService::update() {
@@ -343,13 +368,21 @@ void QrService::startScanSession() {
     lastQrActivityAtMs_ = millis();
     lastDecodedPayload_ = "";
     lastDecodedPayloadAtMs_ = 0;
+    rawFrameCaptureSavedCount_ = 0;
+    refreshRawFrameCaptureState();
 }
 
 void QrService::stopScanSession() {
     Serial.println("QR service: scan session stopped.");
+    if (rawFrameCaptureEnabled_) {
+        Serial.printf("QR service: raw frame capture stopped after saving %lu frames.\n",
+                      static_cast<unsigned long>(rawFrameCaptureSavedCount_));
+    }
     lastQrActivityAtMs_ = 0;
     lastDecodedPayload_ = "";
     lastDecodedPayloadAtMs_ = 0;
+    rawFrameCaptureEnabled_ = false;
+    rawFrameCaptureSessionDir_ = "";
 }
 
 void QrService::recordDecodedActivity() {
@@ -395,6 +428,164 @@ bool QrService::parseAlbumId(const char *payload, String *albumId) {
     }
 
     *albumId = candidate;
+    return true;
+}
+
+void QrService::refreshRawFrameCaptureState() {
+    rawFrameCaptureEnabled_ = false;
+    rawFrameCaptureSessionDir_ = "";
+
+    if (!mediaService_) {
+        Serial.println("QR service: raw frame capture unavailable without media service.");
+        return;
+    }
+    if (!mediaService_->ensureStorageMounted()) {
+        Serial.println("QR service: raw frame capture unavailable because SD storage is not mounted.");
+        return;
+    }
+    if (!SD_MMC.exists(kRawFrameCaptureMarkerPath)) {
+        return;
+    }
+    if (!SD_MMC.mkdir(kRawFrameCaptureOutputDir) && !SD_MMC.exists(kRawFrameCaptureOutputDir)) {
+        Serial.printf("QR service: failed to prepare %s for raw frame capture.\n",
+                      kRawFrameCaptureOutputDir);
+        return;
+    }
+
+    if (!createRawFrameCaptureSessionDir()) {
+        return;
+    }
+    rawFrameCaptureEnabled_ = true;
+    Serial.printf("QR service: raw frame capture enabled via %s; saving every %lu frame to %s.\n",
+                  kRawFrameCaptureMarkerPath,
+                  static_cast<unsigned long>(kRawFrameCaptureEveryNthFrame),
+                  rawFrameCaptureSessionDir_.c_str());
+}
+
+bool QrService::createRawFrameCaptureSessionDir() {
+    const unsigned long sessionMillis = millis();
+    const uint32_t sessionRandom = esp_random();
+
+    for (uint32_t attempt = 0; attempt < 8; ++attempt) {
+        char sessionDir[96];
+        snprintf(sessionDir,
+                 sizeof(sessionDir),
+                 "%s/session_%08lu_%08lx",
+                 kRawFrameCaptureOutputDir,
+                 sessionMillis,
+                 static_cast<unsigned long>(sessionRandom + attempt));
+        if (!SD_MMC.exists(sessionDir)) {
+            if (SD_MMC.mkdir(sessionDir)) {
+                rawFrameCaptureSessionDir_ = sessionDir;
+                return true;
+            }
+            Serial.printf("QR service: failed to create raw frame capture session dir %s.\n",
+                          sessionDir);
+            return false;
+        }
+    }
+
+    Serial.println("QR service: unable to allocate a unique raw frame capture session dir.");
+    return false;
+}
+
+void QrService::handleRawFrameCaptured(const uint8_t *buffer,
+                                       size_t length,
+                                       uint16_t width,
+                                       uint16_t height,
+                                       uint32_t frameCounter) {
+    if (!rawFrameCaptureEnabled_) {
+        return;
+    }
+    if (((frameCounter + 1) % kRawFrameCaptureEveryNthFrame) != 0) {
+        return;
+    }
+    if (!SD_MMC.exists(kRawFrameCaptureMarkerPath)) {
+        rawFrameCaptureEnabled_ = false;
+        Serial.printf("QR service: raw frame capture disabled because %s was removed.\n",
+                      kRawFrameCaptureMarkerPath);
+        return;
+    }
+
+    (void)saveRawFrameCapture(buffer, length, width, height, frameCounter + 1);
+}
+
+bool QrService::saveRawFrameCapture(const uint8_t *buffer,
+                                    size_t length,
+                                    uint16_t width,
+                                    uint16_t height,
+                                    uint32_t frameCounter) {
+    if (!buffer || length == 0) {
+        return false;
+    }
+    if (!mediaService_ || !mediaService_->ensureStorageMounted()) {
+        Serial.println("QR service: skipping raw frame capture because SD storage is unavailable.");
+        rawFrameCaptureEnabled_ = false;
+        return false;
+    }
+    if (rawFrameCaptureSessionDir_.isEmpty()) {
+        Serial.println("QR service: skipping raw frame capture because no session dir is active.");
+        rawFrameCaptureEnabled_ = false;
+        return false;
+    }
+
+    char basePath[96];
+    snprintf(basePath,
+             sizeof(basePath),
+             "%s/frame_%08lu_%ux%u_%u",
+             rawFrameCaptureSessionDir_.c_str(),
+             static_cast<unsigned long>(frameCounter),
+             static_cast<unsigned>(width),
+             static_cast<unsigned>(height),
+             static_cast<unsigned>(length));
+
+    const String tmpPath = String(basePath) + kRawFrameCaptureTempSuffix;
+    const String finalPath = String(basePath) + ".pgm";
+    char pgmHeader[32];
+    const int headerLength = snprintf(pgmHeader,
+                                      sizeof(pgmHeader),
+                                      "P5\n%u %u\n255\n",
+                                      static_cast<unsigned>(width),
+                                      static_cast<unsigned>(height));
+    if (headerLength <= 0 || static_cast<size_t>(headerLength) >= sizeof(pgmHeader)) {
+        Serial.printf("QR service: failed to build PGM header for frame %lu.\n",
+                      static_cast<unsigned long>(frameCounter));
+        return false;
+    }
+
+    File file = SD_MMC.open(tmpPath.c_str(), FILE_WRITE);
+    if (!file) {
+        Serial.printf("QR service: failed to open %s for raw frame capture.\n", tmpPath.c_str());
+        return false;
+    }
+
+    const size_t headerWritten =
+        file.write(reinterpret_cast<const uint8_t *>(pgmHeader), static_cast<size_t>(headerLength));
+    const size_t payloadWritten = file.write(buffer, length);
+    file.flush();
+    file.close();
+    if (headerWritten != static_cast<size_t>(headerLength) || payloadWritten != length) {
+        Serial.printf("QR service: incomplete PGM frame capture write to %s (header=%u/%u payload=%u/%u bytes).\n",
+                      tmpPath.c_str(),
+                      static_cast<unsigned>(headerWritten),
+                      static_cast<unsigned>(headerLength),
+                      static_cast<unsigned>(payloadWritten),
+                      static_cast<unsigned>(length));
+        SD_MMC.remove(tmpPath.c_str());
+        return false;
+    }
+
+    (void)SD_MMC.remove(finalPath.c_str());
+    if (!SD_MMC.rename(tmpPath.c_str(), finalPath.c_str())) {
+        Serial.printf("QR service: failed to finalize raw frame capture %s.\n", finalPath.c_str());
+        SD_MMC.remove(tmpPath.c_str());
+        return false;
+    }
+
+    rawFrameCaptureSavedCount_++;
+    Serial.printf("QR service: saved PGM frame %lu to %s.\n",
+                  static_cast<unsigned long>(frameCounter),
+                  finalPath.c_str());
     return true;
 }
 
@@ -639,6 +830,7 @@ bool QrService::initCamera(bool startDecoderTask) {
 
     reader_ = new ESP32QRCodeReader(makeCameraPins(), kQrFrameSize);
     reader_->cameraConfig = makeDirectCameraConfig();
+    reader_->setRawFrameObserver(handleRawFrameCapturedStatic, this);
 
     configureCameraRouting();
 

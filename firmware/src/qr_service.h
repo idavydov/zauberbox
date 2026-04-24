@@ -8,11 +8,12 @@
 #include "app_state.h"
 
 class ESP32QRCodeReader;
+class MediaService;
 class QrService {
   public:
     using AlbumScanCallback = std::function<bool(const String &albumId)>;
 
-    bool begin(AlbumScanCallback onAlbumScanned);
+    bool begin(MediaService *mediaService, AlbumScanCallback onAlbumScanned);
     void update();
 
     bool submitDecodedPayload(const char *payload);
@@ -24,6 +25,12 @@ class QrService {
 
 
   private:
+    static void handleRawFrameCapturedStatic(void *context,
+                                             const uint8_t *buffer,
+                                             size_t length,
+                                             uint16_t width,
+                                             uint16_t height,
+                                             uint32_t frameCounter);
     static bool parseAlbumId(const char *payload, String *albumId);
 
     void pollDecodedQrs();
@@ -40,12 +47,26 @@ class QrService {
     bool isDuplicatePayload(const String &payload) const;
     void configureCameraRouting() const;
     void disableCameraHardware() const;
+    void refreshRawFrameCaptureState();
+    bool createRawFrameCaptureSessionDir();
+    void handleRawFrameCaptured(const uint8_t *buffer,
+                                size_t length,
+                                uint16_t width,
+                                uint16_t height,
+                                uint32_t frameCounter);
+    bool saveRawFrameCapture(const uint8_t *buffer,
+                             size_t length,
+                             uint16_t width,
+                             uint16_t height,
+                             uint32_t frameCounter);
     bool ensureDebugPreviewScratch(size_t requiredBytes);
     void releaseDebugPreviewScratch();
 
     AlbumScanCallback onAlbumScanned_;
+    MediaService *mediaService_ = nullptr;
     ESP32QRCodeReader *reader_ = nullptr;
     String lastDecodedPayload_;
+    String rawFrameCaptureSessionDir_;
     uint32_t lastQrActivityAtMs_ = 0;
     uint32_t lastDecodedPayloadAtMs_ = 0;
     uint32_t nextStartAttemptAtMs_ = 0;
@@ -54,6 +75,8 @@ class QrService {
     bool scanning_ = false;
     bool available_ = false;
     bool debugPreviewActive_ = false;
+    bool rawFrameCaptureEnabled_ = false;
+    uint32_t rawFrameCaptureSavedCount_ = 0;
     AppState debugPreviewReturnState_ = AppState::Idle;
     uint8_t *debugPreviewScratch_ = nullptr;
     size_t debugPreviewScratchSize_ = 0;
