@@ -334,6 +334,11 @@ bool AppController::playUiSoundForCurrentState(UiSound sound, uint32_t mutedHold
 }
 
 bool AppController::requestWebAlbumPlayback(const String &albumId) {
+    if (appStateStore().current() == AppState::DebugCameraPreview) {
+        Serial.println("App controller: web album playback rejected during debug camera preview.");
+        return false;
+    }
+
     return handleAlbumSelected(albumId);
 }
 

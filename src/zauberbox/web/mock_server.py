@@ -336,6 +336,19 @@ def playback_next():
         return jsonify({"success": False, "error": "Failed to start next track"}), 409
     return jsonify({"success": True})
 
+
+@app.route('/api/playback/toggle-pause', methods=['POST'])
+def playback_toggle_pause():
+    if not playback_has_album():
+        return jsonify({"success": False, "error": "No album playing"}), 409
+    MOCK_PLAYBACK["paused"] = not MOCK_PLAYBACK["paused"]
+    if MOCK_PLAYBACK["paused"]:
+        MOCK_PLAYBACK["paused_position_seconds"] = playback_position_seconds()
+    else:
+        MOCK_PLAYBACK["started_at"] = time.time() - MOCK_PLAYBACK["paused_position_seconds"]
+    return jsonify({"success": True})
+
+
 @app.route('/api/mkdir', methods=['POST'])
 def mkdir():
     data = request.json
@@ -414,14 +427,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-@app.route('/api/playback/toggle-pause', methods=['POST'])
-def playback_toggle_pause():
-    if not playback_has_album():
-        return jsonify({"success": False, "error": "No album playing"}), 409
-    MOCK_PLAYBACK["paused"] = not MOCK_PLAYBACK["paused"]
-    if MOCK_PLAYBACK["paused"]:
-        MOCK_PLAYBACK["paused_position_seconds"] = playback_position_seconds()
-    else:
-        MOCK_PLAYBACK["started_at"] = time.time() - MOCK_PLAYBACK["paused_position_seconds"]
-    return jsonify({"success": True})

@@ -95,7 +95,7 @@ MediaPlaybackSnapshot MediaService::snapshot() const {
         snapshot.trackIndex = currentTrackIndex_ + 1;
         snapshot.trackName = baseNameForPath(trackPaths_[currentTrackIndex_]);
         snapshot.positionSeconds = paused_ ? pausedAtSeconds_ : audioCurrentTimeSeconds();
-        snapshot.durationSeconds = audioCurrentDurationSeconds();
+        snapshot.durationSeconds = paused_ ? pausedDurationSeconds_ : audioCurrentDurationSeconds();
     }
 
     return snapshot;
@@ -159,6 +159,9 @@ bool MediaService::playAlbum(const char *albumId) {
     currentTrackIndex_ = 0;
     albumActive_ = true;
     paused_ = false;
+    pausedAtSeconds_ = 0;
+    pausedDurationSeconds_ = 0;
+    pausedFilePosition_ = 0;
 
     if (!startCurrentTrack()) {
         albumActive_ = false;
@@ -178,6 +181,9 @@ bool MediaService::restartCurrentAlbum() {
     clearTransientUiSoundState();
     currentTrackIndex_ = 0;
     paused_ = false;
+    pausedAtSeconds_ = 0;
+    pausedDurationSeconds_ = 0;
+    pausedFilePosition_ = 0;
     if (!startCurrentTrack()) {
         return false;
     }
@@ -194,6 +200,9 @@ bool MediaService::nextTrack() {
     clearTransientUiSoundState();
     currentTrackIndex_++;
     paused_ = false;
+    pausedAtSeconds_ = 0;
+    pausedDurationSeconds_ = 0;
+    pausedFilePosition_ = 0;
     if (!startCurrentTrack()) {
         currentTrackIndex_--;
         return false;
@@ -215,6 +224,9 @@ bool MediaService::previousTrackOrRestart() {
     }
 
     paused_ = false;
+    pausedAtSeconds_ = 0;
+    pausedDurationSeconds_ = 0;
+    pausedFilePosition_ = 0;
     if (!startCurrentTrack()) {
         return false;
     }
@@ -238,6 +250,7 @@ bool MediaService::togglePause() {
         }
         paused_ = false;
         pausedAtSeconds_ = 0;
+        pausedDurationSeconds_ = 0;
         pausedFilePosition_ = 0;
         (void)appStateStore().transitionTo(AppState::Playing);
         return true;
@@ -245,6 +258,7 @@ bool MediaService::togglePause() {
 
     // Pausing: capture position and stop playback
     pausedAtSeconds_ = audioCurrentTimeSeconds();
+    pausedDurationSeconds_ = audioCurrentDurationSeconds();
     pausedFilePosition_ = audioCurrentFilePosition();
     (void)audioStopPlayback();
     paused_ = true;
@@ -260,6 +274,9 @@ bool MediaService::stopAlbum() {
     clearTransientUiSoundState();
     albumActive_ = false;
     paused_ = false;
+    pausedAtSeconds_ = 0;
+    pausedDurationSeconds_ = 0;
+    pausedFilePosition_ = 0;
     trackPaths_.clear();
     currentAlbumId_ = "";
     currentTrackIndex_ = 0;
@@ -564,6 +581,9 @@ void MediaService::handlePlaybackFinished(AudioPlaybackEvent event) {
     Serial.printf("Media service: album finished: %s\n", currentAlbumId_.c_str());
     albumActive_ = false;
     paused_ = false;
+    pausedAtSeconds_ = 0;
+    pausedDurationSeconds_ = 0;
+    pausedFilePosition_ = 0;
     trackPaths_.clear();
     currentAlbumId_ = "";
     currentTrackIndex_ = 0;
