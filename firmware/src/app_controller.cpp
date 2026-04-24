@@ -71,14 +71,14 @@ void AppController::begin() {
     (void)rc522Service_.begin([this](const String &albumId) {
         return handleAlbumSelected(albumId);
     });
-    webServerService_.begin(&mediaService_, nullptr);
+    webServerService_.begin(&mediaService_, albumInputService_, nullptr);
 #else
     albumInputService_ = &qrService_;
     qrService_.setMediaService(&mediaService_);
     (void)qrService_.begin([this](const String &albumId) {
         return handleAlbumSelected(albumId);
     });
-    webServerService_.begin(&mediaService_, &qrService_);
+    webServerService_.begin(&mediaService_, albumInputService_, &qrService_);
 #endif
     wifiService_.begin([this]() {
         handleWifiConnected();

@@ -27,3 +27,11 @@ bool Rc522Service::isHardwareActive() const {
 bool Rc522Service::stopsBeforePlayback() const {
     return false;
 }
+
+AlbumInputBackend Rc522Service::backend() const {
+    return AlbumInputBackend::Rc522;
+}
+
+bool Rc522Service::supportsDebugCameraPreview() const {
+    return false;
+}

@@ -234,6 +234,14 @@ bool QrService::stopsBeforePlayback() const {
     return true;
 }
 
+AlbumInputBackend QrService::backend() const {
+    return AlbumInputBackend::Qr;
+}
+
+bool QrService::supportsDebugCameraPreview() const {
+    return true;
+}
+
 bool QrService::beginDebugPreview(String *errorMessage) {
     Serial.printf("QR service: beginDebugPreview requested in state=%s wifi=%s scanning=%d camera=%d preview=%d.\n",
                   AppStateStore::stateName(appStateStore().current()),

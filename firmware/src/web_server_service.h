@@ -4,12 +4,15 @@
 #include <time.h>
 #include <WebServer.h>
 
+#include "album_input_service.h"
 #include "media_service.h"
 
 class QrService;
 class WebServerService {
   public:
-    void begin(MediaService *mediaService, QrService *qrService);
+    void begin(MediaService *mediaService,
+               AlbumInputService *albumInputService,
+               QrService *qrService);
     void update();
     void stop();
 
@@ -49,9 +52,12 @@ class WebServerService {
     void handleDebugLogs();
     void handleDebugBatteryOverride();
     void handleStatus();
+    bool supportsDebugCameraPreview() const;
+    AlbumInputBackend currentBackend() const;
 
     WebServer server_{80};
     MediaService *mediaService_ = nullptr;
+    AlbumInputService *albumInputService_ = nullptr;
     QrService *qrService_ = nullptr;
     bool routesRegistered_ = false;
     bool running_ = false;

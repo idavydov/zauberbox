@@ -12,6 +12,21 @@
 #error "Only one album input backend can be selected at a time."
 #endif
 
+enum class AlbumInputBackend : uint8_t {
+    Qr,
+    Rc522
+};
+
+inline const char *albumInputBackendName(AlbumInputBackend backend) {
+    switch (backend) {
+        case AlbumInputBackend::Qr:
+            return "qr";
+        case AlbumInputBackend::Rc522:
+            return "rc522";
+    }
+    return "unknown";
+}
+
 class AlbumInputService {
   public:
     using AlbumSelectedCallback = std::function<bool(const String &albumId)>;
@@ -23,4 +38,6 @@ class AlbumInputService {
     virtual bool isSelectionActive() const = 0;
     virtual bool isHardwareActive() const = 0;
     virtual bool stopsBeforePlayback() const = 0;
+    virtual AlbumInputBackend backend() const = 0;
+    virtual bool supportsDebugCameraPreview() const = 0;
 };

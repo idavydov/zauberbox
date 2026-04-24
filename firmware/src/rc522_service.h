@@ -11,6 +11,8 @@ class Rc522Service : public AlbumInputService {
     bool isSelectionActive() const override;
     bool isHardwareActive() const override;
     bool stopsBeforePlayback() const override;
+    AlbumInputBackend backend() const override;
+    bool supportsDebugCameraPreview() const override;
 
   private:
     AlbumSelectedCallback onAlbumSelected_;

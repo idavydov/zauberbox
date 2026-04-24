@@ -17,6 +17,8 @@ class QrService : public AlbumInputService {
     bool isSelectionActive() const override;
     bool isHardwareActive() const override;
     bool stopsBeforePlayback() const override;
+    AlbumInputBackend backend() const override;
+    bool supportsDebugCameraPreview() const override;
 
     bool submitDecodedPayload(const char *payload);
     bool beginDebugPreview(String *errorMessage = nullptr);

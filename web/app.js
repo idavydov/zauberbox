@@ -89,6 +89,18 @@ function batteryIconName() {
     return 'batteryFull';
 }
 
+function inputBackendName() {
+    return state.deviceStatus?.input?.backend || 'qr';
+}
+
+function supportsDebugCameraPreview() {
+    const capabilities = state.deviceStatus?.input?.capabilities;
+    if (!capabilities) {
+        return true;
+    }
+    return capabilities.debug_camera_preview !== false;
+}
+
 function toggleSelectionMode() {
     state.selectionMode = !state.selectionMode;
     if (!state.selectionMode) state.selectedDirs.clear();
@@ -681,6 +693,16 @@ async function openDebugCamera(push = true) {
             debugReturnHash = currentHash;
         }
         window.location.hash = '/debug/camera';
+        return;
+    }
+
+    if (!supportsDebugCameraPreview()) {
+        stopDebugPreview({ clearImage: true, stopSession: true });
+        state.loading = false;
+        state.view = 'debug-menu';
+        state.debugPreviewError =
+            `Camera preview is unavailable for the ${inputBackendName()} input backend.`;
+        render();
         return;
     }
 
@@ -1475,6 +1497,7 @@ function render() {
             </section>
         `;
     } else if (state.view === 'debug-menu') {
+        const cameraPreviewSupported = supportsDebugCameraPreview();
         navLeft.innerHTML = `
             <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
             <li><strong>Debug</strong></li>
@@ -1484,10 +1507,17 @@ function render() {
         app.innerHTML = `
             <section class="debug-grid debug-menu-grid">
                 ${state.debugPreviewError ? `<article class="debug-card"><p class="debug-status error" style="margin:0;">${state.debugPreviewError}</p></article>` : ''}
+                ${cameraPreviewSupported ? `
                 <article class="debug-menu-card" onclick="openDebugCamera()">
                     <strong>Camera Preview</strong>
                     <p>Inspect the current camera frame captured and converted on the device.</p>
                 </article>
+                ` : `
+                <article class="debug-card">
+                    <strong>Camera Preview</strong>
+                    <p>Unavailable for the ${escapeHtml(inputBackendName())} input backend.</p>
+                </article>
+                `}
                 <article class="debug-menu-card" onclick="openDebugLogs()">
                     <strong>Logs</strong>
                     <p>View recent firmware log output captured on the device.</p>
@@ -1499,6 +1529,14 @@ function render() {
             </section>
         `;
     } else if (state.view === 'debug-camera') {
+        if (!supportsDebugCameraPreview()) {
+            state.view = 'debug-menu';
+            state.debugPreviewError =
+                `Camera preview is unavailable for the ${inputBackendName()} input backend.`;
+            render();
+            return;
+        }
+
         navLeft.innerHTML = `
             <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="leaveDebugMenu()">${ICONS.back}</button></li>
             <li><strong>Camera Preview</strong></li>

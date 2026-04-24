@@ -136,8 +136,11 @@ uint64_t fnv1a64UpdateUint64(uint64_t hash, uint64_t value) {
 
 } // namespace
 
-void WebServerService::begin(MediaService *mediaService, QrService *qrService) {
+void WebServerService::begin(MediaService *mediaService,
+                             AlbumInputService *albumInputService,
+                             QrService *qrService) {
     mediaService_ = mediaService;
+    albumInputService_ = albumInputService;
     qrService_ = qrService;
     if (!routesRegistered_) {
         registerRoutes();
@@ -162,6 +165,14 @@ void WebServerService::stop() {
     server_.stop();
     running_ = false;
     Serial.println("Web server: stopped (forced).");
+}
+
+bool WebServerService::supportsDebugCameraPreview() const {
+    return albumInputService_ != nullptr && albumInputService_->supportsDebugCameraPreview();
+}
+
+AlbumInputBackend WebServerService::currentBackend() const {
+    return albumInputService_ ? albumInputService_->backend() : AlbumInputBackend::Qr;
 }
 
 void WebServerService::startIfNeeded() {
@@ -918,8 +929,8 @@ void WebServerService::handleDebugCameraFrame() {
     if (!ensureAuthorized()) {
         return;
     }
-    if (!qrService_) {
-        sendJsonError(500, "QR service unavailable");
+    if (!supportsDebugCameraPreview() || !qrService_) {
+        sendJsonError(404, "Camera preview unavailable for active input backend");
         return;
     }
 
@@ -953,8 +964,8 @@ void WebServerService::handleDebugCameraPreviewStart() {
     if (!ensureAuthorized()) {
         return;
     }
-    if (!qrService_) {
-        sendJsonError(500, "QR service unavailable");
+    if (!supportsDebugCameraPreview() || !qrService_) {
+        sendJsonError(404, "Camera preview unavailable for active input backend");
         return;
     }
 
@@ -978,8 +989,8 @@ void WebServerService::handleDebugCameraPreviewStop() {
     if (!ensureAuthorized()) {
         return;
     }
-    if (!qrService_) {
-        sendJsonError(500, "QR service unavailable");
+    if (!supportsDebugCameraPreview() || !qrService_) {
+        sendJsonError(404, "Camera preview unavailable for active input backend");
         return;
     }
 
@@ -1056,9 +1067,19 @@ void WebServerService::handleStatus() {
     const BatteryDebugOverrideStatus debugOverride = batteryService().debugVoltageOverrideStatus();
     const uint32_t now = millis();
 
-    StaticJsonDocument<640> response;
+    StaticJsonDocument<768> response;
     response["app_state"] = AppStateStore::stateName(runtime.appState);
     response["wifi_mode"] = AppStateStore::wifiModeName(runtime.wifiMode);
+    JsonObject inputObject = response.createNestedObject("input");
+    inputObject["backend"] = albumInputBackendName(currentBackend());
+    inputObject["selection_active"] =
+        albumInputService_ != nullptr && albumInputService_->isSelectionActive();
+    inputObject["hardware_active"] =
+        albumInputService_ != nullptr && albumInputService_->isHardwareActive();
+    inputObject["stops_before_playback"] =
+        albumInputService_ != nullptr && albumInputService_->stopsBeforePlayback();
+    JsonObject inputCapabilitiesObject = inputObject.createNestedObject("capabilities");
+    inputCapabilitiesObject["debug_camera_preview"] = supportsDebugCameraPreview();
 
     JsonObject batteryObject = response.createNestedObject("battery");
     batteryObject["initialized"] = battery.initialized;
