@@ -172,7 +172,7 @@ void QrService::update() {
     }
     observeState(state);
 
-    if (state == AppState::QrScan) {
+    if (isAlbumSelectionState(state)) {
         if (!scanning_ && millis() >= nextStartAttemptAtMs_) {
             (void)startScanning();
         }
@@ -275,7 +275,7 @@ bool QrService::beginDebugPreview(String *errorMessage) {
                       debugPreviewActive_);
         return debugPreviewActive_;
     }
-    if (state != AppState::QrScan && state != AppState::Idle) {
+    if (!isAlbumSelectionState(state) && state != AppState::Idle) {
         Serial.printf("QR service: beginDebugPreview rejected in state=%s.\n",
                       AppStateStore::stateName(state));
         if (errorMessage) {
@@ -296,7 +296,7 @@ bool QrService::beginDebugPreview(String *errorMessage) {
         return false;
     }
 
-    if (state == AppState::QrScan) {
+    if (isAlbumSelectionState(state)) {
         Serial.println("QR service: stopping QR scanning before enabling debug preview.");
         stopScanning();
     }
@@ -365,7 +365,7 @@ void QrService::handleStateTransition(AppState state) {
                   scanning_,
                   cameraInitialized_,
                   debugPreviewActive_);
-    if (state == AppState::QrScan) {
+    if (isAlbumSelectionState(state)) {
         startScanSession();
         return;
     }

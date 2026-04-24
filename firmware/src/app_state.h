@@ -14,6 +14,12 @@ enum class AppState : uint8_t {
     Resetting,
 };
 
+constexpr AppState kAlbumSelectionState = AppState::QrScan;
+
+constexpr bool isAlbumSelectionState(AppState state) {
+    return state == kAlbumSelectionState;
+}
+
 enum class WifiMode : uint8_t {
     Disabled,
     Connecting,
@@ -48,7 +54,7 @@ class AppStateStore {
         .appState = AppState::Boot,
         .wifiMode = WifiMode::Disabled,
     };
-    AppState wifiPortalReturnState_ = AppState::QrScan;
+    AppState wifiPortalReturnState_ = kAlbumSelectionState;
 };
 
 AppStateStore &appStateStore();

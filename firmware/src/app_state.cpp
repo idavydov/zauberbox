@@ -11,7 +11,7 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
 
     switch (fromState) {
         case AppState::Boot:
-            return toState == AppState::QrScan ||
+            return toState == kAlbumSelectionState ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::QrScan:
@@ -22,14 +22,14 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Idle:
-            return toState == AppState::QrScan ||
+            return toState == kAlbumSelectionState ||
                    toState == AppState::DebugCameraPreview ||
                    toState == AppState::Playing ||
                    toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::DebugCameraPreview:
-            return toState == AppState::QrScan ||
+            return toState == kAlbumSelectionState ||
                    toState == AppState::Idle ||
                    toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
@@ -37,22 +37,22 @@ bool AppStateStore::isValidTransition(AppState fromState, AppState toState) cons
         case AppState::Playing:
             return toState == AppState::Paused ||
                    toState == AppState::Idle ||
-                   toState == AppState::QrScan ||
+                   toState == kAlbumSelectionState ||
                    toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Paused:
             return toState == AppState::Playing ||
                    toState == AppState::Idle ||
-                   toState == AppState::QrScan ||
+                   toState == kAlbumSelectionState ||
                    toState == AppState::Sleep ||
                    toState == AppState::WifiPortal ||
                    toState == AppState::Resetting;
         case AppState::Sleep:
-            return toState == AppState::QrScan ||
+            return toState == kAlbumSelectionState ||
                    toState == AppState::Resetting;
         case AppState::WifiPortal:
-            return toState == AppState::QrScan ||
+            return toState == kAlbumSelectionState ||
                    toState == AppState::Idle ||
                    toState == AppState::DebugCameraPreview ||
                    toState == AppState::Playing ||
@@ -77,7 +77,7 @@ void AppStateStore::init() {
         .appState = AppState::Boot,
         .wifiMode = WifiMode::Disabled,
     };
-    wifiPortalReturnState_ = AppState::QrScan;
+    wifiPortalReturnState_ = kAlbumSelectionState;
     portEXIT_CRITICAL(&stateMux_);
 }
 
@@ -134,7 +134,7 @@ bool AppStateStore::transitionTo(AppState nextState) {
 }
 
 void AppStateStore::completeBoot() {
-    transitionTo(AppState::QrScan);
+    transitionTo(kAlbumSelectionState);
 }
 
 void AppStateStore::requestFactoryReset() {

@@ -248,7 +248,7 @@ bool MediaService::stopAlbum() {
         return false;
     }
 
-    appStateStore().transitionTo(AppState::QrScan);
+    appStateStore().transitionTo(kAlbumSelectionState);
     return true;
 }
 

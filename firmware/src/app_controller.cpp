@@ -154,7 +154,7 @@ void AppController::handleButtonEvent(const ButtonEvent &event) {
     if (state == AppState::Idle) {
         if (event.buttonId == ButtonId::Key2 &&
             event.pressKind == ButtonPressKind::LongPress) {
-            (void)appStateStore().transitionTo(AppState::QrScan);
+            (void)appStateStore().transitionTo(kAlbumSelectionState);
         }
         return;
     }
@@ -245,7 +245,7 @@ bool AppController::handleAlbumSelected(const String &albumId) {
     pendingAlbumRequiresInputStop_ =
         albumInputService_ != nullptr &&
         albumInputService_->stopsBeforePlayback() &&
-        appStateStore().current() == AppState::QrScan;
+        isAlbumSelectionState(appStateStore().current());
     resumeSelectionAfterError_ = false;
     resumeSelectionReadyAtMs_ = 0;
 
@@ -309,7 +309,7 @@ bool AppController::playUiSoundForCurrentState(UiSound sound, uint32_t mutedHold
 
 bool AppController::shouldMuteOutputInCurrentState() const {
     const AppState state = appStateStore().current();
-    if (state == AppState::QrScan) {
+    if (isAlbumSelectionState(state)) {
         return albumInputService_ != nullptr &&
                albumInputService_->stopsBeforePlayback() &&
                albumInputService_->isSelectionActive() &&
@@ -346,7 +346,9 @@ void AppController::handleScanAudioState() {
         scanStartChimePlaybackSeen_ = false;
     }
 
-    if (!selectionActive || appStateStore().current() != AppState::QrScan || !pendingAlbumId_.isEmpty()) {
+    if (!selectionActive ||
+        !isAlbumSelectionState(appStateStore().current()) ||
+        !pendingAlbumId_.isEmpty()) {
         return;
     }
 
@@ -482,7 +484,7 @@ void AppController::handlePendingAlbumStart() {
         if (millis() >= resumeSelectionReadyAtMs_ && !audioIsRunning()) {
             resumeSelectionAfterError_ = false;
             resumeSelectionReadyAtMs_ = 0;
-            (void)appStateStore().transitionTo(AppState::QrScan);
+            (void)appStateStore().transitionTo(kAlbumSelectionState);
         }
     }
 
@@ -534,7 +536,7 @@ void AppController::handleLowBatteryPlaybackWarning() {
     const AppState state = appStateStore().current();
     if (state != AppState::Playing &&
         state != AppState::Paused &&
-        state != AppState::QrScan) {
+        !isAlbumSelectionState(state)) {
         nextLowBatteryPlaybackBeepAtMs_ = 0;
         return;
     }
@@ -657,7 +659,7 @@ bool AppController::shouldEnterCriticalBatterySleep(const BatterySnapshot &batte
     return state == AppState::Idle ||
            state == AppState::Playing ||
            state == AppState::Paused ||
-           state == AppState::QrScan ||
+           isAlbumSelectionState(state) ||
            state == AppState::DebugCameraPreview ||
            state == AppState::WifiPortal;
 }

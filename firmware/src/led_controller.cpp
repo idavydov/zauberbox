@@ -116,7 +116,7 @@ void LedController::runTask() {
                 vTaskDelay(pdMS_TO_TICKS(10));
                 break;
             }
-            case AppState::QrScan: {
+            case kAlbumSelectionState: {
                 const uint8_t head = scanFrame % kLedCount;
                 for (int i = 0; i < kLedCount; i++) {
                     uint8_t level = 0;
