@@ -22,6 +22,7 @@ MOCK_PLAYBACK = {
     "started_at": 0.0,
     "paused": False,
     "paused_position_seconds": 0,
+    "track_duration": 45,  # Shorter tracks for easier testing of transitions
 }
 
 # Configurable storage directory
@@ -57,7 +58,22 @@ def playback_position_seconds(now=None):
         return int(MOCK_PLAYBACK["paused_position_seconds"])
     if now is None:
         now = time.time()
-    return max(0, int(now - MOCK_PLAYBACK["started_at"]))
+    
+    elapsed = int(now - MOCK_PLAYBACK["started_at"])
+    duration = MOCK_PLAYBACK["track_duration"]
+    
+    # Auto-advance simulation
+    while elapsed >= duration:
+        if MOCK_PLAYBACK["track_index"] < len(MOCK_PLAYBACK["tracks"]) - 1:
+            MOCK_PLAYBACK["track_index"] += 1
+            MOCK_PLAYBACK["started_at"] += duration
+            elapsed -= duration
+        else:
+            # End of album reached
+            elapsed = duration
+            break
+            
+    return max(0, elapsed)
 
 
 def set_playback_album(album_id):
@@ -260,7 +276,7 @@ def status():
         track_count = len(MOCK_PLAYBACK["tracks"])
         track_name = MOCK_PLAYBACK["tracks"][MOCK_PLAYBACK["track_index"]]
         position_seconds = playback_position_seconds(now)
-        duration_seconds = 180  # Mock 3 minutes
+        duration_seconds = MOCK_PLAYBACK["track_duration"]
 
     return jsonify({
         "app_state": app_state,
@@ -341,9 +357,13 @@ def playback_next():
 def playback_toggle_pause():
     if not playback_has_album():
         return jsonify({"success": False, "error": "No album playing"}), 409
+    
+    # Capture position BEFORE changing state
+    current_pos = playback_position_seconds()
+    
     MOCK_PLAYBACK["paused"] = not MOCK_PLAYBACK["paused"]
     if MOCK_PLAYBACK["paused"]:
-        MOCK_PLAYBACK["paused_position_seconds"] = playback_position_seconds()
+        MOCK_PLAYBACK["paused_position_seconds"] = current_pos
     else:
         MOCK_PLAYBACK["started_at"] = time.time() - MOCK_PLAYBACK["paused_position_seconds"]
     return jsonify({"success": True})

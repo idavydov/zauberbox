@@ -30,6 +30,7 @@ let state = {
     debugBatteryError: '',
     selectionMode: false,
     selectedDirs: new Set(),
+    playbackUpdatedAt: 0,
     error: null
 };
 let debugPreviewTimerId = 0;
@@ -38,6 +39,7 @@ let debugLogsTimerId = 0;
 let debugLogsAbortController = null;
 let deviceStatusTimerId = 0;
 let deviceStatusAbortController = null;
+let tickerTimerId = 0;
 let debugReturnHash = '#/';
 
 const MOCK_DATA = [
@@ -117,6 +119,42 @@ function playbackStatus() {
     return state.deviceStatus?.playback || null;
 }
 
+function getPredictedPlaybackPosition() {
+    const playback = playbackStatus();
+    if (!playback) return 0;
+    if (playback.mode !== 'playing') return playback.position_seconds;
+    const elapsedSinceUpdate = (Date.now() - state.playbackUpdatedAt) / 1000;
+    return Math.min(playback.duration_seconds, playback.position_seconds + elapsedSinceUpdate);
+}
+
+function startPlaybackTicker() {
+    if (tickerTimerId) return;
+    tickerTimerId = window.setInterval(() => {
+        const playback = playbackStatus();
+        if (playback && playback.mode === 'playing') {
+            updatePlaybackTimeUI();
+        } else {
+            stopPlaybackTicker();
+        }
+    }, 1000);
+}
+
+function stopPlaybackTicker() {
+    if (tickerTimerId) {
+        window.clearInterval(tickerTimerId);
+        tickerTimerId = 0;
+    }
+}
+
+function updatePlaybackTimeUI() {
+    const timeEl = document.querySelector('.playback-time');
+    if (!timeEl) return;
+    const playback = playbackStatus();
+    if (!playback) return;
+    const pos = getPredictedPlaybackPosition();
+    timeEl.textContent = `${formatPlaybackSeconds(pos)} / ${formatPlaybackSeconds(playback.duration_seconds)}`;
+}
+
 function formatPlaybackSeconds(totalSeconds) {
     if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
         return '0:00';
@@ -147,13 +185,21 @@ function playbackModeLabel(mode) {
 function renderPlaybackBar() {
     const playback = playbackStatus();
     if (!playback || !playback.has_album || playback.mode === 'stopped') {
+        stopPlaybackTicker();
         return '';
     }
 
     const isPlaying = playback.mode === 'playing';
+    if (isPlaying) {
+        startPlaybackTicker();
+    } else {
+        stopPlaybackTicker();
+    }
+
+    const pos = getPredictedPlaybackPosition();
     const modeEmoji = isPlaying ? '▶️' : '⏸️';
     const albumTrack = `${playback.album_id}/${playback.track_name}`;
-    const timeInfo = `${formatPlaybackSeconds(playback.position_seconds)} / ${formatPlaybackSeconds(playback.duration_seconds)}`;
+    const timeInfo = `${formatPlaybackSeconds(pos)} / ${formatPlaybackSeconds(playback.duration_seconds)}`;
 
     return `
         <div class="playback-bar">
@@ -484,6 +530,7 @@ async function refreshDeviceStatus() {
         }
 
         state.deviceStatus = await response.json();
+        state.playbackUpdatedAt = Date.now();
         if (!supportsQrAlbumCards()) {
             state.selectionMode = false;
             state.selectedDirs.clear();
@@ -2022,5 +2069,8 @@ function render() {
 }
 
 window.addEventListener('hashchange', navigate);
-window.addEventListener('beforeunload', stopDeviceStatusRefresh);
+window.addEventListener('beforeunload', () => {
+    stopDeviceStatusRefresh();
+    stopPlaybackTicker();
+});
 window.onload = navigate;
