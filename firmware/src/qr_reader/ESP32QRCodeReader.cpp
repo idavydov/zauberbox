@@ -541,17 +541,8 @@ void qrCodeDetectTask(void *taskData)
     const uint32_t processStartedAtUs = micros();
     const FilterPass &filterPass = selectFilterPass(frameCounter, consecutiveNoCandidateFrames);
     bool foundInFrame = false;
+    bool decodedAnyValid = false;
     int lastCandidateCount = 0;
-
-    if (self->rawFrameObserver != nullptr)
-    {
-      self->rawFrameObserver(self->rawFrameObserverContext,
-                             fb->buf,
-                             fb->len,
-                             fb->width,
-                             fb->height,
-                             frameCounter);
-    }
 
     image = quirc_begin(q, NULL, NULL);
     applyFilterPass(filterPass, fb->buf, image, fb->width, fb->height);
@@ -561,11 +552,22 @@ void qrCodeDetectTask(void *taskData)
     if (lastCandidateCount > 0)
     {
       foundInFrame = true;
-      (void)enqueueDecodeResults(self,
-                                 q,
-                                 lastCandidateCount,
-                                 &successfulDecodeCount,
-                                 &decodeFailureCount);
+      decodedAnyValid = enqueueDecodeResults(self,
+                                             q,
+                                             lastCandidateCount,
+                                             &successfulDecodeCount,
+                                             &decodeFailureCount);
+    }
+
+    if (self->rawFrameObserver != nullptr)
+    {
+      self->rawFrameObserver(self->rawFrameObserverContext,
+                             fb->buf,
+                             fb->len,
+                             fb->width,
+                             fb->height,
+                             frameCounter,
+                             decodedAnyValid);
     }
 
     if (!foundInFrame)

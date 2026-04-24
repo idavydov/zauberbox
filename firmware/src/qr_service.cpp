@@ -133,7 +133,8 @@ void QrService::handleRawFrameCapturedStatic(void *context,
                                              size_t length,
                                              uint16_t width,
                                              uint16_t height,
-                                             uint32_t frameCounter) {
+                                             uint32_t frameCounter,
+                                             bool decodedAnyValid) {
     if (!context) {
         return;
     }
@@ -142,7 +143,8 @@ void QrService::handleRawFrameCapturedStatic(void *context,
                                                               length,
                                                               width,
                                                               height,
-                                                              frameCounter);
+                                                              frameCounter,
+                                                              decodedAnyValid);
 }
 
 void QrService::update() {
@@ -439,7 +441,7 @@ void QrService::refreshRawFrameCaptureState() {
         return;
     }
     rawFrameCaptureEnabled_ = true;
-    Serial.printf("QR service: raw frame capture enabled via %s; saving every %lu frame to %s.\n",
+    Serial.printf("QR service: raw frame capture enabled via %s; saving every %lu frame plus decoded hits to %s.\n",
                   kRawFrameCaptureMarkerPath,
                   static_cast<unsigned long>(kRawFrameCaptureEveryNthFrame),
                   rawFrameCaptureSessionDir_.c_str());
@@ -476,11 +478,14 @@ void QrService::handleRawFrameCaptured(const uint8_t *buffer,
                                        size_t length,
                                        uint16_t width,
                                        uint16_t height,
-                                       uint32_t frameCounter) {
+                                       uint32_t frameCounter,
+                                       bool decodedAnyValid) {
     if (!rawFrameCaptureEnabled_) {
         return;
     }
-    if (((frameCounter + 1) % kRawFrameCaptureEveryNthFrame) != 0) {
+    const uint32_t frameNumber = frameCounter + 1;
+    const bool isScheduledSample = (frameNumber % kRawFrameCaptureEveryNthFrame) == 0;
+    if (!isScheduledSample && !decodedAnyValid) {
         return;
     }
     if (!SD_MMC.exists(kRawFrameCaptureMarkerPath)) {
@@ -490,7 +495,7 @@ void QrService::handleRawFrameCaptured(const uint8_t *buffer,
         return;
     }
 
-    (void)saveRawFrameCapture(buffer, length, width, height, frameCounter + 1);
+    (void)saveRawFrameCapture(buffer, length, width, height, frameNumber);
 }
 
 bool QrService::saveRawFrameCapture(const uint8_t *buffer,

@@ -33,7 +33,8 @@ class QrService : public AlbumInputService {
                                              size_t length,
                                              uint16_t width,
                                              uint16_t height,
-                                             uint32_t frameCounter);
+                                             uint32_t frameCounter,
+                                             bool decodedAnyValid);
     void pollDecodedQrs();
     bool startScanning();
     void stopScanning();
@@ -54,7 +55,8 @@ class QrService : public AlbumInputService {
                                 size_t length,
                                 uint16_t width,
                                 uint16_t height,
-                                uint32_t frameCounter);
+                                uint32_t frameCounter,
+                                bool decodedAnyValid);
     bool saveRawFrameCapture(const uint8_t *buffer,
                              size_t length,
                              uint16_t width,
