@@ -35,3 +35,7 @@ AlbumInputBackend Rc522Service::backend() const {
 bool Rc522Service::supportsDebugCameraPreview() const {
     return false;
 }
+
+bool Rc522Service::supportsQrAlbumCards() const {
+    return false;
+}

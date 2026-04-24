@@ -40,4 +40,5 @@ class AlbumInputService {
     virtual bool stopsBeforePlayback() const = 0;
     virtual AlbumInputBackend backend() const = 0;
     virtual bool supportsDebugCameraPreview() const = 0;
+    virtual bool supportsQrAlbumCards() const = 0;
 };

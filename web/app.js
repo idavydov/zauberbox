@@ -101,6 +101,14 @@ function supportsDebugCameraPreview() {
     return capabilities.debug_camera_preview !== false;
 }
 
+function supportsQrAlbumCards() {
+    const capabilities = state.deviceStatus?.input?.capabilities;
+    if (!capabilities) {
+        return true;
+    }
+    return capabilities.qr_album_cards !== false;
+}
+
 function toggleSelectionMode() {
     state.selectionMode = !state.selectionMode;
     if (!state.selectionMode) state.selectedDirs.clear();
@@ -356,6 +364,10 @@ async function refreshDeviceStatus() {
         }
 
         state.deviceStatus = await response.json();
+        if (!supportsQrAlbumCards()) {
+            state.selectionMode = false;
+            state.selectedDirs.clear();
+        }
         state.deviceStatusError = '';
         scheduleDeviceStatusRefresh();
     } catch (err) {
@@ -1212,6 +1224,16 @@ async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset
 }
 
 async function handleGenerateCard() {
+    if (!supportsQrAlbumCards()) {
+        await showModal({
+            title: 'Unavailable',
+            message: `QR card generation is unavailable for the ${inputBackendName()} input backend.`,
+            confirmText: 'OK',
+            showCancel: false
+        });
+        return;
+    }
+
     const coverUrl = state.files.find(f => f.name.toLowerCase() === 'cover.jpg')
         ? `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent('cover.jpg')}`
         : null;
@@ -1272,6 +1294,16 @@ function drawSheetGuides(ctx, width, height, rowHeight, rowCount) {
 }
 
 async function handleDownloadSheets() {
+    if (!supportsQrAlbumCards()) {
+        await showModal({
+            title: 'Unavailable',
+            message: `QR sheet generation is unavailable for the ${inputBackendName()} input backend.`,
+            confirmText: 'OK',
+            showCancel: false
+        });
+        return;
+    }
+
     if (state.selectedDirs.size === 0) return;
     state.loading = true; render();
     try {
@@ -1409,6 +1441,7 @@ function render() {
 
     if (state.view === 'dashboard') {
         const battery = state.deviceStatus?.battery;
+        const qrAlbumCardsSupported = supportsQrAlbumCards();
         const batterySummary = batterySummaryText();
         const batteryState = batteryStateClass();
 		const batteryDetail = state.deviceStatusError ? `title="${escapeHtml(state.deviceStatusError)}"` : '';
@@ -1435,7 +1468,9 @@ function render() {
         html += `
             <div class="header-row">
                 <h2>Directories</h2>
-                <button class="${state.selectionMode ? 'primary' : 'contrast outline'} select-btn" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select Folders'}</button>
+                ${qrAlbumCardsSupported
+                    ? `<button class="${state.selectionMode ? 'primary' : 'contrast outline'} select-btn" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select Folders'}</button>`
+                    : ''}
             </div>
             <div class="dir-grid">
         `;
@@ -1461,7 +1496,7 @@ function render() {
         }
         html += `</div></div>`;
 
-        if (state.selectionMode && state.selectedDirs.size > 0) {
+        if (qrAlbumCardsSupported && state.selectionMode && state.selectedDirs.size > 0) {
             html += `
                 <div class="selection-bar">
                     <span>${state.selectedDirs.size} selected</span>
@@ -1728,7 +1763,9 @@ function render() {
         `;
         navRight.innerHTML = `
             <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleSetTitle()" title="Set album title">${ICONS.edit} ${state.files.some(f => f.name.toLowerCase() === 'title.txt') ? 'Edit Title' : 'Set Title'}</button></li>
-            <li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button></li>
+            ${supportsQrAlbumCards()
+                ? `<li><button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button></li>`
+                : ''}
         `;
         
         let html = `

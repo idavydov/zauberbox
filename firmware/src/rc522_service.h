@@ -13,6 +13,7 @@ class Rc522Service : public AlbumInputService {
     bool stopsBeforePlayback() const override;
     AlbumInputBackend backend() const override;
     bool supportsDebugCameraPreview() const override;
+    bool supportsQrAlbumCards() const override;
 
   private:
     AlbumSelectedCallback onAlbumSelected_;

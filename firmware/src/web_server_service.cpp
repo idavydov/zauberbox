@@ -1080,6 +1080,8 @@ void WebServerService::handleStatus() {
         albumInputService_ != nullptr && albumInputService_->stopsBeforePlayback();
     JsonObject inputCapabilitiesObject = inputObject.createNestedObject("capabilities");
     inputCapabilitiesObject["debug_camera_preview"] = supportsDebugCameraPreview();
+    inputCapabilitiesObject["qr_album_cards"] =
+        albumInputService_ != nullptr && albumInputService_->supportsQrAlbumCards();
 
     JsonObject batteryObject = response.createNestedObject("battery");
     batteryObject["initialized"] = battery.initialized;
