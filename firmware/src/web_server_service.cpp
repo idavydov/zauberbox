@@ -21,6 +21,42 @@ namespace {
 constexpr char kIndexPath[] = "/index.html";
 constexpr char kFirstLoginPath[] = "/first_login.html";
 
+const char *selectionStateDisplayName(AlbumInputBackend backend) {
+    switch (backend) {
+        case AlbumInputBackend::Qr:
+            return "QR Scan";
+        case AlbumInputBackend::Rc522:
+            return "Album Select";
+    }
+
+    return "Selection";
+}
+
+const char *appStateDisplayName(AppState state, AlbumInputBackend backend) {
+    switch (state) {
+        case AppState::Boot:
+            return "Boot";
+        case AppState::QrScan:
+            return selectionStateDisplayName(backend);
+        case AppState::Idle:
+            return "Idle";
+        case AppState::DebugCameraPreview:
+            return "Debug Camera Preview";
+        case AppState::Playing:
+            return "Playing";
+        case AppState::Paused:
+            return "Paused";
+        case AppState::Sleep:
+            return "Sleep";
+        case AppState::WifiPortal:
+            return "Wi-Fi Portal";
+        case AppState::Resetting:
+            return "Resetting";
+    }
+
+    return "Unknown";
+}
+
 String readJsonString(WebServer &server, const char *key) {
     StaticJsonDocument<256> doc;
     const DeserializationError error = deserializeJson(doc, server.arg("plain"));
@@ -1063,12 +1099,15 @@ void WebServerService::handleStatus() {
     const BatterySnapshot battery = batteryService().snapshot();
     const BatteryDebugOverrideStatus debugOverride = batteryService().debugVoltageOverrideStatus();
     const uint32_t now = millis();
+    const AlbumInputBackend backend = currentBackend();
 
     StaticJsonDocument<768> response;
     response["app_state"] = AppStateStore::stateName(runtime.appState);
+    response["app_state_display"] = appStateDisplayName(runtime.appState, backend);
     response["wifi_mode"] = AppStateStore::wifiModeName(runtime.wifiMode);
     JsonObject inputObject = response.createNestedObject("input");
-    inputObject["backend"] = albumInputBackendName(currentBackend());
+    inputObject["backend"] = albumInputBackendName(backend);
+    inputObject["selection_state_label"] = selectionStateDisplayName(backend);
     inputObject["selection_active"] =
         albumInputService_ != nullptr && albumInputService_->isSelectionActive();
     inputObject["hardware_active"] =
