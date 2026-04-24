@@ -24,9 +24,11 @@ class QrService : public AlbumInputService {
     void prepareForSleep() override;
 
     bool submitDecodedPayload(const char *payload);
-    bool beginDebugPreview(String *errorMessage = nullptr);
-    void endDebugPreview();
-    bool captureDebugJpeg(std::vector<uint8_t> *jpegData, int transformIndex, String *errorMessage = nullptr);
+    bool beginDebugPreview(String *errorMessage = nullptr) override;
+    void endDebugPreview() override;
+    bool captureDebugJpeg(std::vector<uint8_t> *jpegData,
+                          int transformIndex,
+                          String *errorMessage = nullptr) override;
     void setMediaService(MediaService *mediaService);
 
 

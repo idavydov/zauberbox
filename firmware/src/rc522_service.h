@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include <vector>
+
 #include "album_input_service.h"
 
 class Rc522Service : public AlbumInputService {
@@ -16,6 +18,11 @@ class Rc522Service : public AlbumInputService {
     bool supportsDebugCameraPreview() const override;
     bool supportsQrAlbumCards() const override;
     void prepareForSleep() override;
+    bool beginDebugPreview(String *errorMessage = nullptr) override;
+    void endDebugPreview() override;
+    bool captureDebugJpeg(std::vector<uint8_t> *jpegData,
+                          int transformIndex,
+                          String *errorMessage = nullptr) override;
 
   private:
     AlbumSelectedCallback onAlbumSelected_;

@@ -7,12 +7,9 @@
 #include "album_input_service.h"
 #include "media_service.h"
 
-class QrService;
 class WebServerService {
   public:
-    void begin(MediaService *mediaService,
-               AlbumInputService *albumInputService,
-               QrService *qrService);
+    void begin(MediaService *mediaService, AlbumInputService *albumInputService);
     void update();
     void stop();
 
@@ -58,7 +55,6 @@ class WebServerService {
     WebServer server_{80};
     MediaService *mediaService_ = nullptr;
     AlbumInputService *albumInputService_ = nullptr;
-    QrService *qrService_ = nullptr;
     bool routesRegistered_ = false;
     bool running_ = false;
     File uploadFile_;

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include <functional>
+#include <vector>
 
 #if !defined(ZAUBERBOX_INPUT_QR) && !defined(ZAUBERBOX_INPUT_RC522)
 #define ZAUBERBOX_INPUT_QR 1
@@ -43,4 +44,9 @@ class AlbumInputService {
     virtual bool supportsDebugCameraPreview() const = 0;
     virtual bool supportsQrAlbumCards() const = 0;
     virtual void prepareForSleep() = 0;
+    virtual bool beginDebugPreview(String *errorMessage = nullptr) = 0;
+    virtual void endDebugPreview() = 0;
+    virtual bool captureDebugJpeg(std::vector<uint8_t> *jpegData,
+                                  int transformIndex,
+                                  String *errorMessage = nullptr) = 0;
 };

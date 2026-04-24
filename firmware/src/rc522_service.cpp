@@ -47,3 +47,24 @@ bool Rc522Service::supportsQrAlbumCards() const {
 void Rc522Service::prepareForSleep() {
     active_ = false;
 }
+
+bool Rc522Service::beginDebugPreview(String *errorMessage) {
+    if (errorMessage) {
+        *errorMessage = "Camera preview unavailable for active input backend";
+    }
+    return false;
+}
+
+void Rc522Service::endDebugPreview() {
+}
+
+bool Rc522Service::captureDebugJpeg(std::vector<uint8_t> *jpegData,
+                                    int transformIndex,
+                                    String *errorMessage) {
+    (void)jpegData;
+    (void)transformIndex;
+    if (errorMessage) {
+        *errorMessage = "Camera preview unavailable for active input backend";
+    }
+    return false;
+}

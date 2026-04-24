@@ -15,7 +15,6 @@
 #include "battery_service.h"
 #include "config_service.h"
 #include "debug_log.h"
-#include "qr_service.h"
 
 namespace {
 
@@ -137,11 +136,9 @@ uint64_t fnv1a64UpdateUint64(uint64_t hash, uint64_t value) {
 } // namespace
 
 void WebServerService::begin(MediaService *mediaService,
-                             AlbumInputService *albumInputService,
-                             QrService *qrService) {
+                             AlbumInputService *albumInputService) {
     mediaService_ = mediaService;
     albumInputService_ = albumInputService;
-    qrService_ = qrService;
     if (!routesRegistered_) {
         registerRoutes();
         routesRegistered_ = true;
@@ -929,7 +926,7 @@ void WebServerService::handleDebugCameraFrame() {
     if (!ensureAuthorized()) {
         return;
     }
-    if (!supportsDebugCameraPreview() || !qrService_) {
+    if (!supportsDebugCameraPreview() || !albumInputService_) {
         sendJsonError(404, "Camera preview unavailable for active input backend");
         return;
     }
@@ -943,7 +940,7 @@ void WebServerService::handleDebugCameraFrame() {
 
     std::vector<uint8_t> jpegData;
     String errorMessage;
-    if (!qrService_->captureDebugJpeg(&jpegData, transformIndex, &errorMessage)) {
+    if (!albumInputService_->captureDebugJpeg(&jpegData, transformIndex, &errorMessage)) {
         const bool busy =
             errorMessage.startsWith("Preview unavailable while QR scanning") ||
             errorMessage.startsWith("Preview unavailable while audio");
@@ -964,7 +961,7 @@ void WebServerService::handleDebugCameraPreviewStart() {
     if (!ensureAuthorized()) {
         return;
     }
-    if (!supportsDebugCameraPreview() || !qrService_) {
+    if (!supportsDebugCameraPreview() || !albumInputService_) {
         sendJsonError(404, "Camera preview unavailable for active input backend");
         return;
     }
@@ -973,7 +970,7 @@ void WebServerService::handleDebugCameraPreviewStart() {
                   AppStateStore::stateName(appStateStore().current()),
                   AppStateStore::wifiModeName(appStateStore().wifiMode()));
     String errorMessage;
-    if (!qrService_->beginDebugPreview(&errorMessage)) {
+    if (!albumInputService_->beginDebugPreview(&errorMessage)) {
         Serial.printf("Web server: debug camera preview start failed: %s\n",
                       errorMessage.isEmpty() ? "unknown error" : errorMessage.c_str());
         sendJsonError(409,
@@ -989,7 +986,7 @@ void WebServerService::handleDebugCameraPreviewStop() {
     if (!ensureAuthorized()) {
         return;
     }
-    if (!supportsDebugCameraPreview() || !qrService_) {
+    if (!supportsDebugCameraPreview() || !albumInputService_) {
         sendJsonError(404, "Camera preview unavailable for active input backend");
         return;
     }
@@ -997,7 +994,7 @@ void WebServerService::handleDebugCameraPreviewStop() {
     Serial.printf("Web server: /api/debug/camera-preview/stop in appState=%s wifi=%s.\n",
                   AppStateStore::stateName(appStateStore().current()),
                   AppStateStore::wifiModeName(appStateStore().wifiMode()));
-    qrService_->endDebugPreview();
+    albumInputService_->endDebugPreview();
     server_.send(200, "application/json", "{\"success\":true}");
 }
 
