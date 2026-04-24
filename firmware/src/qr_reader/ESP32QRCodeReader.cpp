@@ -10,6 +10,10 @@ namespace {
 constexpr uint32_t kQrStatsLogEveryFrames = 30;
 constexpr int kCrossSharpenKernelCenter = 7;
 constexpr int kCrossSharpenKernelNeighbor = -1;
+constexpr int kBrightnessBoostOffset = 12;
+constexpr int kBrightnessReduceOffset = -12;
+constexpr uint32_t kBrightnessRetryStartFrames = 8;
+constexpr uint32_t kBrightnessRetryPeriodFrames = 16;
 
 struct Transform
 {
@@ -26,23 +30,27 @@ enum class FilterPassKind
 {
   Raw,
   CrossKernel,
+  BrightnessOffset,
 };
 
 struct FilterPass
 {
   FilterPassKind kind;
   const Transform *transform;
+  int brightnessOffset;
   const char *name;
 };
 
 constexpr FilterPass kScheduledFilterPasses[] = {
-    {FilterPassKind::CrossKernel, &kDefaultTransform, kDefaultTransform.name},
-    {FilterPassKind::Raw, nullptr, "raw"},
-    {FilterPassKind::CrossKernel, &kDefaultTransform, kDefaultTransform.name},
-    {FilterPassKind::CrossKernel, &kFallbackNoCandidateTransform, kFallbackNoCandidateTransform.name},
+    {FilterPassKind::CrossKernel, &kDefaultTransform, 0, kDefaultTransform.name},
+    {FilterPassKind::Raw, nullptr, 0, "raw"},
+    {FilterPassKind::CrossKernel, &kDefaultTransform, 0, kDefaultTransform.name},
+    {FilterPassKind::CrossKernel, &kFallbackNoCandidateTransform, 0, kFallbackNoCandidateTransform.name},
 };
 
 constexpr size_t kScheduledFilterPassCount = sizeof(kScheduledFilterPasses) / sizeof(kScheduledFilterPasses[0]);
+constexpr FilterPass kRareBrightenFilterPass{FilterPassKind::BrightnessOffset, nullptr, kBrightnessBoostOffset, "brighten+12"};
+constexpr FilterPass kRareDarkenFilterPass{FilterPassKind::BrightnessOffset, nullptr, kBrightnessReduceOffset, "darken-12"};
 
 const char *frameSizeName(framesize_t frameSize)
 {
@@ -242,6 +250,16 @@ void applyFilterPass(const FilterPass &filterPass,
     return;
   }
 
+  if (filterPass.kind == FilterPassKind::BrightnessOffset)
+  {
+    const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+      dst[i] = clampToByte(static_cast<int>(src[i]) + filterPass.brightnessOffset);
+    }
+    return;
+  }
+
   if (filterPass.transform == nullptr)
   {
     return;
@@ -254,6 +272,21 @@ void applyFilterPass(const FilterPass &filterPass,
                                       filterPass.transform->cw,
                                       filterPass.transform->div,
                                       filterPass.transform->off);
+}
+
+const FilterPass &selectFilterPass(const uint32_t frameCounter, const uint32_t consecutiveNoCandidateFrames)
+{
+  if (consecutiveNoCandidateFrames >= kBrightnessRetryStartFrames)
+  {
+    const uint32_t missesSinceBrightnessRetryStart = consecutiveNoCandidateFrames - kBrightnessRetryStartFrames;
+    if ((missesSinceBrightnessRetryStart % kBrightnessRetryPeriodFrames) == 0)
+    {
+      const uint32_t brightnessRetryIndex = missesSinceBrightnessRetryStart / kBrightnessRetryPeriodFrames;
+      return ((brightnessRetryIndex % 2) == 0) ? kRareBrightenFilterPass : kRareDarkenFilterPass;
+    }
+  }
+
+  return kScheduledFilterPasses[frameCounter % kScheduledFilterPassCount];
 }
 
 } // namespace
@@ -422,6 +455,7 @@ void qrCodeDetectTask(void *taskData)
   uint32_t successfulDecodeCount = 0;
   uint32_t decodeFailureCount = 0;
   uint32_t noCodeFrameCount = 0;
+  uint32_t consecutiveNoCandidateFrames = 0;
   uint64_t totalCaptureUs = 0;
   uint64_t totalProcessUs = 0;
 
@@ -505,7 +539,7 @@ void qrCodeDetectTask(void *taskData)
     }
 
     const uint32_t processStartedAtUs = micros();
-    const FilterPass &filterPass = kScheduledFilterPasses[frameCounter % kScheduledFilterPassCount];
+    const FilterPass &filterPass = selectFilterPass(frameCounter, consecutiveNoCandidateFrames);
     bool foundInFrame = false;
     int lastCandidateCount = 0;
 
@@ -527,6 +561,11 @@ void qrCodeDetectTask(void *taskData)
     if (!foundInFrame)
     {
       noCodeFrameCount++;
+      consecutiveNoCandidateFrames++;
+    }
+    else
+    {
+      consecutiveNoCandidateFrames = 0;
     }
 
     frameCounter++;
