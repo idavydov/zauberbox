@@ -30,6 +30,15 @@ the camera and start playback of the corresponding album directory.
 - Scanning the same album again restarts playback from the beginning of that
   album.
 
+## Supported NFC Tag Format
+
+- The RC522 input build reads ISO14443A NTAG cards containing an NDEF Text or
+  URI record.
+- The decoded NDEF payload uses the same album URL format as QR codes:
+  `file://XXX`.
+- Re-presenting the same tag while it remains on the reader should not restart
+  playback repeatedly; remove and present the tag again to trigger another read.
+
 ## Supported Audio Files
 
 - The player should support local file playback from the microSD card.

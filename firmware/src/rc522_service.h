@@ -25,6 +25,14 @@ class Rc522Service : public AlbumInputService {
                           String *errorMessage = nullptr) override;
 
   private:
+    bool readCurrentTagAlbumId(String *albumId);
+    void noteNoCardPresent();
+
     AlbumSelectedCallback onAlbumSelected_;
     bool active_ = false;
+    bool initialized_ = false;
+    bool presentedTagProcessed_ = false;
+    uint8_t missingPollCount_ = 0;
+    uint32_t nextPollAtMs_ = 0;
+    String presentedUid_;
 };
