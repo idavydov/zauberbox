@@ -21,7 +21,10 @@ constexpr uint8_t kRc522MisoPin = 8;
 constexpr uint8_t kRc522MosiPin = 9;
 
 constexpr uint32_t kRc522PollIntervalMs = 100;
+constexpr uint32_t kRc522IdleLogIntervalMs = 5000;
+constexpr uint32_t kRc522SerialReadFailureLogIntervalMs = 1000;
 constexpr uint8_t kRc522MissingPollsBeforeRemoval = 3;
+constexpr uint32_t kRc522ResetPulseMs = 50;
 constexpr uint8_t kNtagFirstUserPage = 4;
 constexpr uint8_t kNtagLastUserPage = 39; // NTAG213 user memory: 36 pages, 144 bytes.
 
@@ -29,7 +32,7 @@ constexpr uint8_t kNdefTlv = 0x03;
 constexpr uint8_t kTerminatorTlv = 0xFE;
 constexpr uint8_t kNullTlv = 0x00;
 
-MFRC522 gRc522(kRc522CsPin, kRc522ResetPin);
+MFRC522 gRc522(kRc522CsPin, MFRC522::UNUSED_PIN);
 
 String formatUid(const MFRC522::Uid &uid) {
     String value;
@@ -262,10 +265,20 @@ bool Rc522Service::begin(AlbumSelectedCallback onAlbumSelected) {
     active_ = false;
 
 #if defined(ZAUBERBOX_INPUT_RC522)
+    pinMode(kRc522CsPin, OUTPUT);
+    digitalWrite(kRc522CsPin, HIGH);
     pinMode(kRc522ResetPin, OUTPUT);
+
+    // Some RC522 breakouts do not keep RST pulled up reliably; keep reset under firmware control.
+    digitalWrite(kRc522ResetPin, LOW);
+    delay(kRc522ResetPulseMs);
     digitalWrite(kRc522ResetPin, HIGH);
+    delay(kRc522ResetPulseMs);
+
     SPI.begin(kRc522SckPin, kRc522MisoPin, kRc522MosiPin, kRc522CsPin);
     gRc522.PCD_Init();
+    digitalWrite(kRc522ResetPin, HIGH);
+    logReaderVersion();
     gRc522.PCD_AntennaOn();
     initialized_ = true;
     Serial.printf("RC522 service: initialized (SCK=%u MISO=%u MOSI=%u CS=%u RST=%u).\n",
@@ -298,14 +311,27 @@ void Rc522Service::update() {
     nextPollAtMs_ = now + kRc522PollIntervalMs;
 
     if (!gRc522.PICC_IsNewCardPresent()) {
+        if (lastIdleLogAtMs_ == 0 ||
+            static_cast<int32_t>(now - lastIdleLogAtMs_) >= static_cast<int32_t>(kRc522IdleLogIntervalMs)) {
+            lastIdleLogAtMs_ = now;
+            Serial.println("RC522 service: polling, no tag present.");
+        }
         noteNoCardPresent();
         return;
     }
     if (!gRc522.PICC_ReadCardSerial()) {
+        if (lastSerialReadFailureLogAtMs_ == 0 ||
+            static_cast<int32_t>(now - lastSerialReadFailureLogAtMs_) >=
+                static_cast<int32_t>(kRc522SerialReadFailureLogIntervalMs)) {
+            lastSerialReadFailureLogAtMs_ = now;
+            Serial.println("RC522 service: tag present but serial read failed.");
+        }
         noteNoCardPresent();
         return;
     }
 
+    lastIdleLogAtMs_ = 0;
+    lastSerialReadFailureLogAtMs_ = 0;
     missingPollCount_ = 0;
     const String uid = formatUid(gRc522.uid);
     if (uid == presentedUid_ && presentedTagProcessed_) {
@@ -408,6 +434,21 @@ bool Rc522Service::readCurrentTagAlbumId(String *albumId) {
 #else
     (void)albumId;
     return false;
+#endif
+}
+
+void Rc522Service::logReaderVersion() const {
+#if defined(ZAUBERBOX_INPUT_RC522)
+    const byte version = gRc522.PCD_ReadRegister(MFRC522::VersionReg);
+    Serial.printf("RC522 service: version register=0x%02X", version);
+    if (version == 0x00 || version == 0xFF) {
+        Serial.print(" (no SPI response; check wiring/power/CS/RST)");
+    } else if (version == 0x91 || version == 0x92) {
+        Serial.print(" (MFRC522 detected)");
+    } else {
+        Serial.print(" (unexpected value)");
+    }
+    Serial.println();
 #endif
 }
 
