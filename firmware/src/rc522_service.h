@@ -35,7 +35,6 @@ class Rc522Service : public AlbumInputService {
     bool presentedTagProcessed_ = false;
     uint8_t missingPollCount_ = 0;
     uint32_t nextPollAtMs_ = 0;
-    uint32_t lastIdleLogAtMs_ = 0;
     uint32_t lastSerialReadFailureLogAtMs_ = 0;
     String presentedUid_;
 };

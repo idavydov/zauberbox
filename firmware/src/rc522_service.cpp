@@ -21,7 +21,6 @@ constexpr uint8_t kRc522MisoPin = 8;
 constexpr uint8_t kRc522MosiPin = 9;
 
 constexpr uint32_t kRc522PollIntervalMs = 100;
-constexpr uint32_t kRc522IdleLogIntervalMs = 5000;
 constexpr uint32_t kRc522SerialReadFailureLogIntervalMs = 1000;
 constexpr uint8_t kRc522MissingPollsBeforeRemoval = 3;
 constexpr uint32_t kRc522ResetPulseMs = 50;
@@ -311,11 +310,6 @@ void Rc522Service::update() {
     nextPollAtMs_ = now + kRc522PollIntervalMs;
 
     if (!gRc522.PICC_IsNewCardPresent()) {
-        if (lastIdleLogAtMs_ == 0 ||
-            static_cast<int32_t>(now - lastIdleLogAtMs_) >= static_cast<int32_t>(kRc522IdleLogIntervalMs)) {
-            lastIdleLogAtMs_ = now;
-            Serial.println("RC522 service: polling, no tag present.");
-        }
         noteNoCardPresent();
         return;
     }
@@ -330,7 +324,6 @@ void Rc522Service::update() {
         return;
     }
 
-    lastIdleLogAtMs_ = 0;
     lastSerialReadFailureLogAtMs_ = 0;
     missingPollCount_ = 0;
     const String uid = formatUid(gRc522.uid);
