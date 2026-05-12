@@ -57,6 +57,9 @@ class WebServerService {
     void handleDebugCameraFrame();
     void handleDebugLogs();
     void handleDebugBatteryOverride();
+    void handleBeginTagWrite();
+    void handleTagWriteStatus();
+    void handleCancelTagWrite();
     void handleStatus();
     void handlePlayAlbum();
     void handlePreviousTrack();

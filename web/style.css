@@ -250,7 +250,7 @@ header nav {
     display: block;
 }
 .dir-card { position: relative; }
-.dir-card .delete-btn, .dir-card .card-play-btn, .dir-card .select-overlay {
+.dir-card .delete-btn, .dir-card .card-play-btn, .dir-card .card-tag-btn, .dir-card .select-overlay {
     position: absolute;
     top: 0.5rem;
     background: var(--pico-card-background-color);
@@ -267,7 +267,8 @@ header nav {
 }
 .dir-card .delete-btn { right: 0.5rem; color: var(--pico-error-background); }
 .dir-card .card-play-btn { left: 0.5rem; color: var(--pico-primary); }
-.dir-card .delete-btn:hover, .dir-card .card-play-btn:hover { transform: scale(1.1); }
+.dir-card .card-tag-btn { left: 2.9rem; color: var(--pico-secondary); }
+.dir-card .delete-btn:hover, .dir-card .card-play-btn:hover, .dir-card .card-tag-btn:hover { transform: scale(1.1); }
 
 .dir-card .select-overlay { left: 0.5rem; opacity: 0; color: var(--pico-primary); }
 .selection-mode .dir-card .select-overlay { opacity: 1; }

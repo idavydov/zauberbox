@@ -38,6 +38,12 @@ the camera and start playback of the corresponding album directory.
   `file://XXX`.
 - Re-presenting the same tag while it remains on the reader should not restart
   playback repeatedly; remove and present the tag again to trigger another read.
+- The RC522 input build can write NTAG cards from the web app. Writing a tag
+  stores an NDEF URI record with the same `file://XXX` album URL format and
+  verifies the tag by reading it back.
+- While a web-initiated tag write is waiting for a tag, the next presented tag
+  is written instead of starting playback. Playback may continue in the
+  background, and normal tag-to-play behavior resumes after success or cancel.
 
 ## Supported Audio Files
 

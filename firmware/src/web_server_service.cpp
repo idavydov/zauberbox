@@ -32,6 +32,25 @@ const char *selectionStateDisplayName(AlbumInputBackend backend) {
     return "Selection";
 }
 
+const char *tagWriteStateName(AlbumInputService::TagWriteState state) {
+    switch (state) {
+        case AlbumInputService::TagWriteState::Unsupported:
+            return "unsupported";
+        case AlbumInputService::TagWriteState::Idle:
+            return "idle";
+        case AlbumInputService::TagWriteState::WaitingForTag:
+            return "waiting_for_tag";
+        case AlbumInputService::TagWriteState::Writing:
+            return "writing";
+        case AlbumInputService::TagWriteState::Succeeded:
+            return "succeeded";
+        case AlbumInputService::TagWriteState::Failed:
+            return "failed";
+    }
+
+    return "unknown";
+}
+
 const char *appStateDisplayName(AppState state, AlbumInputBackend backend) {
     switch (state) {
         case AppState::Boot:
@@ -284,6 +303,15 @@ void WebServerService::registerRoutes() {
     });
     server_.on("/api/playback/toggle-pause", HTTP_POST, [this]() {
         handleTogglePause();
+    });
+    server_.on("/api/tags/write", HTTP_POST, [this]() {
+        handleBeginTagWrite();
+    });
+    server_.on("/api/tags/write/status", HTTP_GET, [this]() {
+        handleTagWriteStatus();
+    });
+    server_.on("/api/tags/write/cancel", HTTP_POST, [this]() {
+        handleCancelTagWrite();
     });
 
     for (const char *asset : {"/style.css", "/app.js", "/pico.min.css", "/qrcode.min.js"}) {
@@ -1140,6 +1168,16 @@ void WebServerService::handleStatus() {
     inputCapabilitiesObject["debug_camera_preview"] = supportsDebugCameraPreview();
     inputCapabilitiesObject["qr_album_cards"] =
         albumInputService_ != nullptr && albumInputService_->supportsQrAlbumCards();
+    inputCapabilitiesObject["nfc_tag_write"] =
+        albumInputService_ != nullptr && albumInputService_->supportsNfcTagWrite();
+    const AlbumInputService::TagWriteStatus tagWrite = albumInputService_ != nullptr
+        ? albumInputService_->nfcTagWriteStatus()
+        : AlbumInputService::TagWriteStatus{};
+    JsonObject tagWriteObject = inputObject.createNestedObject("tag_write");
+    tagWriteObject["state"] = tagWriteStateName(tagWrite.state);
+    tagWriteObject["album_id"] = tagWrite.albumId;
+    tagWriteObject["message"] = tagWrite.message;
+    tagWriteObject["tag_uid"] = tagWrite.tagUid;
 
     JsonObject playbackObject = response.createNestedObject("playback");
     switch (playback.mode) {
@@ -1250,4 +1288,64 @@ void WebServerService::handleTogglePause() {
     }
 
     server_.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebServerService::handleBeginTagWrite() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+    if (!albumInputService_ || !albumInputService_->supportsNfcTagWrite()) {
+        sendJsonError(404, "NFC tag writing unavailable for active input backend");
+        return;
+    }
+
+    const String albumId = readJsonString(server_, "album_id");
+    if (albumId.isEmpty()) {
+        sendJsonError(400, "album_id is required");
+        return;
+    }
+
+    String errorMessage;
+    if (!albumInputService_->beginNfcTagWrite(albumId, &errorMessage)) {
+        sendJsonError(409, errorMessage.isEmpty() ? "Failed to start NFC tag write" : errorMessage.c_str());
+        return;
+    }
+
+    handleTagWriteStatus();
+}
+
+void WebServerService::handleTagWriteStatus() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+    if (!albumInputService_ || !albumInputService_->supportsNfcTagWrite()) {
+        sendJsonError(404, "NFC tag writing unavailable for active input backend");
+        return;
+    }
+
+    const AlbumInputService::TagWriteStatus status = albumInputService_->nfcTagWriteStatus();
+    StaticJsonDocument<256> doc;
+    doc["success"] = true;
+    doc["state"] = tagWriteStateName(status.state);
+    doc["album_id"] = status.albumId;
+    doc["message"] = status.message;
+    doc["tag_uid"] = status.tagUid;
+
+    String body;
+    serializeJson(doc, body);
+    server_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    server_.send(200, "application/json", body);
+}
+
+void WebServerService::handleCancelTagWrite() {
+    if (!ensureAuthorized()) {
+        return;
+    }
+    if (!albumInputService_ || !albumInputService_->supportsNfcTagWrite()) {
+        sendJsonError(404, "NFC tag writing unavailable for active input backend");
+        return;
+    }
+
+    albumInputService_->cancelNfcTagWrite();
+    handleTagWriteStatus();
 }

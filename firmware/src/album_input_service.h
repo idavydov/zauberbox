@@ -32,6 +32,22 @@ class AlbumInputService {
   public:
     using AlbumSelectedCallback = std::function<bool(const String &albumId)>;
 
+    enum class TagWriteState : uint8_t {
+        Unsupported,
+        Idle,
+        WaitingForTag,
+        Writing,
+        Succeeded,
+        Failed
+    };
+
+    struct TagWriteStatus {
+        TagWriteState state = TagWriteState::Unsupported;
+        String albumId;
+        String message;
+        String tagUid;
+    };
+
     virtual ~AlbumInputService() = default;
 
     virtual bool begin(AlbumSelectedCallback onAlbumSelected) = 0;
@@ -43,6 +59,16 @@ class AlbumInputService {
     virtual AlbumInputBackend backend() const = 0;
     virtual bool supportsDebugCameraPreview() const = 0;
     virtual bool supportsQrAlbumCards() const = 0;
+    virtual bool supportsNfcTagWrite() const { return false; }
+    virtual bool beginNfcTagWrite(const String &albumId, String *errorMessage = nullptr) {
+        (void)albumId;
+        if (errorMessage) {
+            *errorMessage = "NFC tag writing unavailable for active input backend";
+        }
+        return false;
+    }
+    virtual void cancelNfcTagWrite() {}
+    virtual TagWriteStatus nfcTagWriteStatus() const { return {}; }
     virtual void prepareForSleep() = 0;
     virtual bool beginDebugPreview(String *errorMessage = nullptr) = 0;
     virtual void endDebugPreview() = 0;

@@ -14,6 +14,14 @@ DEBUG_BATTERY_OVERRIDE = {
     "target_mv": 0,
     "activate_at": 0.0,
 }
+INPUT_BACKEND = "qr"
+TAG_WRITE = {
+    "state": "idle",
+    "album_id": "",
+    "message": "",
+    "tag_uid": "",
+    "started_at": 0.0,
+}
 SUPPORTED_AUDIO_EXTENSIONS = (".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav")
 MOCK_PLAYBACK = {
     "album_id": "",
@@ -103,6 +111,24 @@ def step_playback(delta):
     MOCK_PLAYBACK["paused"] = False
     MOCK_PLAYBACK["paused_position_seconds"] = 0
     return True
+
+
+def update_mock_tag_write():
+    if TAG_WRITE["state"] == "waiting_for_tag" and time.time() - TAG_WRITE["started_at"] >= 3:
+        TAG_WRITE["state"] = "succeeded"
+        TAG_WRITE["message"] = "Mock tag written and verified."
+        TAG_WRITE["tag_uid"] = "MOCKTAG001"
+
+
+def tag_write_response():
+    update_mock_tag_write()
+    return {
+        "success": True,
+        "state": TAG_WRITE["state"],
+        "album_id": TAG_WRITE["album_id"],
+        "message": TAG_WRITE["message"],
+        "tag_uid": TAG_WRITE["tag_uid"],
+    }
 
 @app.route('/')
 def index():
@@ -259,9 +285,11 @@ def status():
         is_low = voltage_mv <= 3600
         is_critical = voltage_mv <= 3450
 
+    update_mock_tag_write()
     playback_mode = "stopped"
     app_state = "QrScan"
-    app_state_display = "QR Scan"
+    selection_label = "Album Select" if INPUT_BACKEND == "rc522" else "QR Scan"
+    app_state_display = selection_label
     track_name = ""
     track_index = 0
     track_count = 0
@@ -283,14 +311,21 @@ def status():
         "app_state_display": app_state_display,
         "wifi_mode": "Connected",
         "input": {
-            "backend": "qr",
-            "selection_state_label": "QR Scan",
-            "selection_active": not playback_has_album(),
-            "hardware_active": not playback_has_album(),
-            "stops_before_playback": True,
+            "backend": INPUT_BACKEND,
+            "selection_state_label": selection_label,
+            "selection_active": INPUT_BACKEND == "rc522" or not playback_has_album(),
+            "hardware_active": INPUT_BACKEND == "rc522" or not playback_has_album(),
+            "stops_before_playback": INPUT_BACKEND != "rc522",
             "capabilities": {
-                "debug_camera_preview": True,
-                "qr_album_cards": True,
+                "debug_camera_preview": INPUT_BACKEND != "rc522",
+                "qr_album_cards": INPUT_BACKEND != "rc522",
+                "nfc_tag_write": INPUT_BACKEND == "rc522",
+            },
+            "tag_write": {
+                "state": TAG_WRITE["state"] if INPUT_BACKEND == "rc522" else "unsupported",
+                "album_id": TAG_WRITE["album_id"] if INPUT_BACKEND == "rc522" else "",
+                "message": TAG_WRITE["message"] if INPUT_BACKEND == "rc522" else "",
+                "tag_uid": TAG_WRITE["tag_uid"] if INPUT_BACKEND == "rc522" else "",
             },
         },
         "playback": {
@@ -369,6 +404,41 @@ def playback_toggle_pause():
     return jsonify({"success": True})
 
 
+@app.route('/api/tags/write', methods=['POST'])
+def tag_write_start():
+    if INPUT_BACKEND != "rc522":
+        return jsonify({"success": False, "error": "NFC tag writing unavailable for active input backend"}), 404
+    data = request.get_json(silent=True) or {}
+    album_id = secure_filename(data.get('album_id', ''))
+    if not album_id:
+        return jsonify({"success": False, "error": "album_id is required"}), 400
+    TAG_WRITE["state"] = "waiting_for_tag"
+    TAG_WRITE["album_id"] = album_id
+    TAG_WRITE["message"] = "Place a tag on the reader."
+    TAG_WRITE["tag_uid"] = ""
+    TAG_WRITE["started_at"] = time.time()
+    return jsonify(tag_write_response())
+
+
+@app.route('/api/tags/write/status')
+def tag_write_status():
+    if INPUT_BACKEND != "rc522":
+        return jsonify({"success": False, "error": "NFC tag writing unavailable for active input backend"}), 404
+    return jsonify(tag_write_response())
+
+
+@app.route('/api/tags/write/cancel', methods=['POST'])
+def tag_write_cancel():
+    if INPUT_BACKEND != "rc522":
+        return jsonify({"success": False, "error": "NFC tag writing unavailable for active input backend"}), 404
+    TAG_WRITE["state"] = "idle"
+    TAG_WRITE["album_id"] = ""
+    TAG_WRITE["message"] = ""
+    TAG_WRITE["tag_uid"] = ""
+    TAG_WRITE["started_at"] = 0.0
+    return jsonify(tag_write_response())
+
+
 @app.route('/api/mkdir', methods=['POST'])
 def mkdir():
     data = request.json
@@ -430,14 +500,17 @@ def rename_file():
     return jsonify({"success": True})
 
 def main():
-    global STORAGE_DIR
+    global INPUT_BACKEND, STORAGE_DIR
     parser = argparse.ArgumentParser(description="Mock ESP32 Web Server")
     parser.add_argument("--root", default="mock_sd", help="Directory for the mock storage")
     parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
+    parser.add_argument("--backend", choices=["qr", "rc522"], default="qr", help="Input backend to simulate")
     args = parser.parse_args()
     
+    INPUT_BACKEND = args.backend
     STORAGE_DIR = os.path.abspath(args.root)
     print(f"Mock server starting. Storage: {STORAGE_DIR}")
+    print(f"Mock input backend: {INPUT_BACKEND}")
     print(f"Web source directory: {WEB_DIR}")
     
     if not os.path.exists(STORAGE_DIR):

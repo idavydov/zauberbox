@@ -22,6 +22,7 @@ constexpr uint8_t kRc522MosiPin = 9;
 
 constexpr uint32_t kRc522PollIntervalMs = 100;
 constexpr uint32_t kRc522SerialReadFailureLogIntervalMs = 1000;
+constexpr uint32_t kRc522TagWriteTimeoutMs = 30000;
 constexpr uint8_t kRc522MissingPollsBeforeRemoval = 3;
 constexpr uint32_t kRc522ResetPulseMs = 50;
 constexpr uint8_t kNtagFirstUserPage = 4;
@@ -30,6 +31,9 @@ constexpr uint8_t kNtagLastUserPage = 39; // NTAG213 user memory: 36 pages, 144 
 constexpr uint8_t kNdefTlv = 0x03;
 constexpr uint8_t kTerminatorTlv = 0xFE;
 constexpr uint8_t kNullTlv = 0x00;
+constexpr uint8_t kNdefUriRecordHeader = 0xD1; // MB + ME + SR + well-known record.
+constexpr uint8_t kNdefUriType = 'U';
+constexpr uint8_t kNdefFileUriPrefix = 0x1D;
 
 MFRC522 gRc522(kRc522CsPin, MFRC522::UNUSED_PIN);
 
@@ -67,6 +71,77 @@ bool readNtagUserMemory(std::vector<uint8_t> *memory) {
 
         const uint8_t pageCount = std::min<uint8_t>(4, kNtagLastUserPage - page + 1);
         memory->insert(memory->end(), buffer, buffer + pageCount * 4);
+    }
+
+    return true;
+}
+
+bool buildAlbumNdefMemory(const String &albumId, std::vector<uint8_t> *memory, String *payload) {
+    if (!memory) {
+        return false;
+    }
+
+    String albumPayload = "file://";
+    albumPayload += albumId;
+    String parsedAlbumId;
+    if (!parseAlbumSelectorPayload(albumPayload.c_str(), &parsedAlbumId) ||
+        parsedAlbumId != albumId) {
+        return false;
+    }
+
+    const size_t uriSuffixLength = albumId.length();
+    const size_t recordPayloadLength = 1 + uriSuffixLength;
+    const size_t recordLength = 4 + recordPayloadLength;
+    const size_t totalLength = 2 + recordLength + 1;
+    const size_t capacity = (kNtagLastUserPage - kNtagFirstUserPage + 1) * 4;
+    if (recordPayloadLength > 255 || recordLength > 254 || totalLength > capacity) {
+        return false;
+    }
+
+    memory->clear();
+    memory->reserve(((totalLength + 3) / 4) * 4);
+    memory->push_back(kNdefTlv);
+    memory->push_back(static_cast<uint8_t>(recordLength));
+    memory->push_back(kNdefUriRecordHeader);
+    memory->push_back(0x01); // URI record type length.
+    memory->push_back(static_cast<uint8_t>(recordPayloadLength));
+    memory->push_back(kNdefUriType);
+    memory->push_back(kNdefFileUriPrefix);
+    for (size_t i = 0; i < uriSuffixLength; i++) {
+        memory->push_back(static_cast<uint8_t>(albumId[i]));
+    }
+    memory->push_back(kTerminatorTlv);
+    while ((memory->size() % 4) != 0) {
+        memory->push_back(0x00);
+    }
+
+    if (payload) {
+        *payload = albumPayload;
+    }
+    return true;
+}
+
+bool writeNtagUserMemory(const std::vector<uint8_t> &memory) {
+    const size_t capacity = (kNtagLastUserPage - kNtagFirstUserPage + 1) * 4;
+    if (memory.empty() || memory.size() > capacity || (memory.size() % 4) != 0) {
+        return false;
+    }
+
+    for (size_t offset = 0; offset < memory.size(); offset += 4) {
+        const uint8_t page = kNtagFirstUserPage + (offset / 4);
+        byte buffer[4] = {
+            memory[offset],
+            memory[offset + 1],
+            memory[offset + 2],
+            memory[offset + 3],
+        };
+        const MFRC522::StatusCode status = gRc522.MIFARE_Ultralight_Write(page, buffer, sizeof(buffer));
+        if (status != MFRC522::STATUS_OK) {
+            Serial.printf("RC522 service: failed to write NTAG page %u: %s\n",
+                          page,
+                          gRc522.GetStatusCodeName(status));
+            return false;
+        }
     }
 
     return true;
@@ -264,6 +339,7 @@ bool Rc522Service::begin(AlbumSelectedCallback onAlbumSelected) {
     active_ = false;
 
 #if defined(ZAUBERBOX_INPUT_RC522)
+    tagWriteStatus_.state = TagWriteState::Idle;
     pinMode(kRc522CsPin, OUTPUT);
     digitalWrite(kRc522CsPin, HIGH);
     pinMode(kRc522ResetPin, OUTPUT);
@@ -309,6 +385,15 @@ void Rc522Service::update() {
     }
     nextPollAtMs_ = now + kRc522PollIntervalMs;
 
+    if (tagWritePending_ &&
+        tagWriteTimeoutAtMs_ != 0 &&
+        static_cast<int32_t>(now - tagWriteTimeoutAtMs_) >= 0) {
+        finishTagWrite(TagWriteState::Failed, "Timed out waiting for a tag.");
+        Serial.printf("RC522 service: tag write for album %s timed out.\n",
+                      tagWriteStatus_.albumId.c_str());
+        return;
+    }
+
     if (!gRc522.PICC_IsNewCardPresent()) {
         noteNoCardPresent();
         return;
@@ -327,6 +412,32 @@ void Rc522Service::update() {
     lastSerialReadFailureLogAtMs_ = 0;
     missingPollCount_ = 0;
     const String uid = formatUid(gRc522.uid);
+
+    if (tagWritePending_) {
+        tagWriteStatus_.state = TagWriteState::Writing;
+        tagWriteStatus_.message = "Writing tag...";
+        tagWriteStatus_.tagUid = uid;
+
+        String errorMessage;
+        if (writeCurrentTagAlbumId(tagWriteStatus_.albumId, &errorMessage)) {
+            finishTagWrite(TagWriteState::Succeeded, "Tag written and verified.", uid);
+            Serial.printf("RC522 service: wrote album %s to tag UID=%s.\n",
+                          tagWriteStatus_.albumId.c_str(),
+                          uid.c_str());
+        } else {
+            finishTagWrite(TagWriteState::Failed, errorMessage, uid);
+            Serial.printf("RC522 service: failed to write tag UID=%s: %s\n",
+                          uid.c_str(),
+                          errorMessage.c_str());
+        }
+
+        presentedUid_ = uid;
+        presentedTagProcessed_ = true;
+        gRc522.PICC_HaltA();
+        gRc522.PCD_StopCrypto1();
+        return;
+    }
+
     if (uid == presentedUid_ && presentedTagProcessed_) {
         gRc522.PICC_HaltA();
         gRc522.PCD_StopCrypto1();
@@ -384,9 +495,75 @@ bool Rc522Service::supportsQrAlbumCards() const {
     return false;
 }
 
+bool Rc522Service::supportsNfcTagWrite() const {
+#if defined(ZAUBERBOX_INPUT_RC522)
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool Rc522Service::beginNfcTagWrite(const String &albumId, String *errorMessage) {
+#if defined(ZAUBERBOX_INPUT_RC522)
+    String payload = "file://";
+    payload += albumId;
+    String parsedAlbumId;
+    if (!parseAlbumSelectorPayload(payload.c_str(), &parsedAlbumId) ||
+        parsedAlbumId != albumId) {
+        if (errorMessage) {
+            *errorMessage = "album_id must be a numeric album directory name";
+        }
+        return false;
+    }
+
+    tagWritePending_ = true;
+    tagWriteStatus_.state = TagWriteState::WaitingForTag;
+    tagWriteStatus_.albumId = albumId;
+    tagWriteStatus_.message = "Place a tag on the reader.";
+    tagWriteStatus_.tagUid = "";
+    presentedUid_ = "";
+    presentedTagProcessed_ = false;
+    missingPollCount_ = 0;
+    lastSerialReadFailureLogAtMs_ = 0;
+    tagWriteTimeoutAtMs_ = millis() + kRc522TagWriteTimeoutMs;
+    Serial.printf("RC522 service: waiting to write album %s to next tag.\n", albumId.c_str());
+    return true;
+#else
+    (void)albumId;
+    if (errorMessage) {
+        *errorMessage = "NFC tag writing unavailable in this build";
+    }
+    return false;
+#endif
+}
+
+void Rc522Service::cancelNfcTagWrite() {
+#if defined(ZAUBERBOX_INPUT_RC522)
+    if (tagWritePending_) {
+        Serial.printf("RC522 service: cancelled tag write for album %s.\n",
+                      tagWriteStatus_.albumId.c_str());
+    }
+    tagWritePending_ = false;
+    tagWriteStatus_.state = TagWriteState::Idle;
+    tagWriteStatus_.albumId = "";
+    tagWriteStatus_.message = "";
+    tagWriteStatus_.tagUid = "";
+    tagWriteTimeoutAtMs_ = 0;
+#endif
+}
+
+AlbumInputService::TagWriteStatus Rc522Service::nfcTagWriteStatus() const {
+#if defined(ZAUBERBOX_INPUT_RC522)
+    return tagWriteStatus_;
+#else
+    return {};
+#endif
+}
+
 void Rc522Service::prepareForSleep() {
     active_ = false;
 #if defined(ZAUBERBOX_INPUT_RC522)
+    cancelNfcTagWrite();
     if (initialized_) {
         gRc522.PCD_AntennaOff();
     }
@@ -427,6 +604,67 @@ bool Rc522Service::readCurrentTagAlbumId(String *albumId) {
 #else
     (void)albumId;
     return false;
+#endif
+}
+
+bool Rc522Service::writeCurrentTagAlbumId(const String &albumId, String *errorMessage) {
+#if defined(ZAUBERBOX_INPUT_RC522)
+    std::vector<uint8_t> memory;
+    String payload;
+    if (!buildAlbumNdefMemory(albumId, &memory, &payload)) {
+        if (errorMessage) {
+            *errorMessage = "Failed to encode NDEF payload.";
+        }
+        return false;
+    }
+
+    if (!writeNtagUserMemory(memory)) {
+        if (errorMessage) {
+            *errorMessage = "Failed to write NTAG memory.";
+        }
+        return false;
+    }
+
+    String verifiedAlbumId;
+    String verifiedPayload;
+    if (!readNdefAlbumId(&verifiedAlbumId, &verifiedPayload)) {
+        if (errorMessage) {
+            *errorMessage = "Tag written, but verification read failed.";
+        }
+        return false;
+    }
+    if (verifiedAlbumId != albumId) {
+        if (errorMessage) {
+            *errorMessage = "Tag verification read a different album.";
+        }
+        return false;
+    }
+
+    Serial.printf("RC522 service: verified NDEF payload: %s\n", verifiedPayload.c_str());
+    (void)payload;
+    return true;
+#else
+    (void)albumId;
+    if (errorMessage) {
+        *errorMessage = "NFC tag writing unavailable in this build";
+    }
+    return false;
+#endif
+}
+
+void Rc522Service::finishTagWrite(AlbumInputService::TagWriteState state,
+                                  const String &message,
+                                  const String &tagUid) {
+#if defined(ZAUBERBOX_INPUT_RC522)
+    tagWritePending_ = false;
+    tagWriteStatus_.state = state;
+    tagWriteStatus_.message = message;
+    tagWriteStatus_.tagUid = tagUid;
+    tagWriteTimeoutAtMs_ = 0;
+#else
+    (void)state;
+    (void)message;
+    (void)tagUid;
 #endif
 }
 

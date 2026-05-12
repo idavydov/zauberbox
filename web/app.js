@@ -41,6 +41,9 @@ let deviceStatusTimerId = 0;
 let deviceStatusAbortController = null;
 let tickerTimerId = 0;
 let debugReturnHash = '#/';
+let tagWritePollTimerId = 0;
+let activeTagWriteAlbumId = '';
+let activeTagWriteAlbumLabel = '';
 
 const MOCK_DATA = [
     { name: "001", cover: null, first_mp3: "01_intro.mp3" },
@@ -62,6 +65,7 @@ const ICONS = {
     image: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-icon lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`,
     file: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/></svg>`,
     download: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download-icon lucide-download"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>`,
+    tag: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-nfc-icon lucide-nfc"><path d="M6 8.32a7.43 7.43 0 0 1 0 7.36"/><path d="M9.46 6.21a11.76 11.76 0 0 1 0 11.58"/><path d="M12.91 4.1a15.91 15.91 0 0 1 .01 15.8"/><path d="M16.37 2a20.16 20.16 0 0 1 0 20"/></svg>`,
     check: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-icon lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`,
     play: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play-icon lucide-play"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>`,
     pause: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause-icon lucide-pause"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>`,
@@ -113,6 +117,11 @@ function supportsQrAlbumCards() {
         return true;
     }
     return capabilities.qr_album_cards !== false;
+}
+
+function supportsNfcTagWrite() {
+    const capabilities = state.deviceStatus?.input?.capabilities;
+    return capabilities?.nfc_tag_write === true;
 }
 
 function playbackStatus() {
@@ -260,6 +269,134 @@ async function handleTogglePause() {
     }
 }
 
+function tagWriteStatusText(status) {
+    switch (status?.state) {
+        case 'waiting_for_tag':
+            return 'Waiting for tag';
+        case 'writing':
+            return 'Writing...';
+        case 'succeeded':
+            return 'Done';
+        case 'failed':
+            return 'Failed';
+        case 'idle':
+            return 'Idle';
+        default:
+            return 'Unavailable';
+    }
+}
+
+function renderTagWriteModalStatus(status) {
+    const messageEl = document.getElementById('tag-write-message');
+    const statusEl = document.getElementById('tag-write-status');
+    const progressEl = document.getElementById('tag-write-progress');
+    const cancelBtn = document.getElementById('tag-write-cancel');
+    const doneBtn = document.getElementById('tag-write-done');
+    if (!messageEl || !statusEl || !progressEl || !cancelBtn || !doneBtn) return;
+
+    const stateName = status?.state || 'unsupported';
+    const busy = stateName === 'waiting_for_tag' || stateName === 'writing';
+    messageEl.textContent = status?.message || (busy ? 'Place a tag on the reader.' : '');
+    statusEl.textContent = tagWriteStatusText(status);
+    statusEl.className = `debug-status${stateName === 'failed' ? ' error' : ''}`;
+    progressEl.style.display = busy ? 'block' : 'none';
+    progressEl.toggleAttribute('aria-busy', busy);
+    cancelBtn.style.display = busy ? 'inline-block' : 'none';
+    doneBtn.style.display = busy ? 'none' : 'inline-block';
+    doneBtn.textContent = stateName === 'succeeded' ? 'Done' : 'Close';
+}
+
+function scheduleTagWritePoll() {
+    if (tagWritePollTimerId) {
+        window.clearTimeout(tagWritePollTimerId);
+    }
+    tagWritePollTimerId = window.setTimeout(pollTagWriteStatus, 600);
+}
+
+async function pollTagWriteStatus() {
+    tagWritePollTimerId = 0;
+    const modal = document.getElementById('tag-write-modal');
+    if (!modal?.open) return;
+
+    try {
+        const status = await fetchAPI('/tags/write/status');
+        renderTagWriteModalStatus(status);
+        if (status.state === 'waiting_for_tag' || status.state === 'writing') {
+            scheduleTagWritePoll();
+        } else {
+            await refreshDeviceStatus();
+        }
+    } catch (err) {
+        renderTagWriteModalStatus({
+            state: 'failed',
+            message: err.message || 'Failed to read tag write status.'
+        });
+    }
+}
+
+async function closeTagWriteModal(cancelActive = true) {
+    if (tagWritePollTimerId) {
+        window.clearTimeout(tagWritePollTimerId);
+        tagWritePollTimerId = 0;
+    }
+
+    const modal = document.getElementById('tag-write-modal');
+    if (cancelActive) {
+        try {
+            await fetchAPI('/tags/write/cancel', { method: 'POST' });
+        } catch (_) {
+            // Closing the modal should not get stuck if cancel fails.
+        }
+    }
+    if (modal?.open) {
+        modal.close();
+    }
+    activeTagWriteAlbumId = '';
+    activeTagWriteAlbumLabel = '';
+    await refreshDeviceStatus();
+}
+
+async function handleWriteTag(albumId, albumLabel = '') {
+    if (!supportsNfcTagWrite()) {
+        showToast(`NFC tag writing is unavailable for the ${inputBackendName()} input backend.`, 'error');
+        return;
+    }
+
+    activeTagWriteAlbumId = albumId;
+    activeTagWriteAlbumLabel = albumLabel || albumId;
+    const modal = document.getElementById('tag-write-modal');
+    const albumEl = document.getElementById('tag-write-album');
+    const cancelBtn = document.getElementById('tag-write-cancel');
+    const doneBtn = document.getElementById('tag-write-done');
+
+    try {
+        const status = await fetchAPI('/tags/write', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ album_id: albumId })
+        });
+
+        if (albumEl) {
+            albumEl.textContent = `Album ${activeTagWriteAlbumLabel} · writes file://${albumId}`;
+        }
+        renderTagWriteModalStatus(status);
+        if (cancelBtn) cancelBtn.onclick = () => closeTagWriteModal(true);
+        if (doneBtn) doneBtn.onclick = () => closeTagWriteModal(false);
+        if (modal) {
+            modal.oncancel = (event) => {
+                event.preventDefault();
+                closeTagWriteModal(true);
+            };
+        }
+        modal?.showModal();
+        scheduleTagWritePoll();
+    } catch (err) {
+        activeTagWriteAlbumId = '';
+        activeTagWriteAlbumLabel = '';
+        showToast(err.message || 'Failed to start NFC tag write.', 'error');
+    }
+}
+
 function showToast(message, type = 'info') {
     const existing = document.querySelector('.toast-container');
     if (existing) existing.remove();
@@ -383,6 +520,14 @@ function escapeHtml(value) {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+}
+
+function escapeJsString(value) {
+    return String(value)
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'")
+        .replaceAll('\n', '\\n')
+        .replaceAll('\r', '\\r');
 }
 
 function updateUploadState(patch) {
@@ -1609,6 +1754,7 @@ function render() {
     if (state.view === 'dashboard') {
         const battery = state.deviceStatus?.battery;
         const qrAlbumCardsSupported = supportsQrAlbumCards();
+        const nfcTagWriteSupported = supportsNfcTagWrite();
         const batterySummary = batterySummaryText();
         const batteryState = batteryStateClass();
 		const batteryDetail = state.deviceStatusError ? `title="${escapeHtml(state.deviceStatusError)}"` : '';
@@ -1645,11 +1791,15 @@ function render() {
         state.directories.forEach(dir => {
             const isSelected = state.selectedDirs.has(dir.name);
             const secondaryText = dir.title || dir.first_mp3 || 'Empty';
+            const albumLabel = escapeJsString(dir.title || dir.name);
             html += `
                 <div class="dir-card ${isSelected ? 'selected' : ''}" onclick="${state.selectionMode ? `toggleDirSelection('${dir.name}')` : `enterDirectory('${dir.name}')`}">
                     ${state.selectionMode ? `<div class="select-overlay">${ICONS.check}</div>` : `
                         <div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>
                         <div class="card-play-btn" onclick="event.stopPropagation(); handlePlayAlbum('${dir.name}')" title="Play Album">${ICONS.play}</div>
+                        ${nfcTagWriteSupported
+                            ? `<div class="card-tag-btn" onclick="event.stopPropagation(); handleWriteTag('${dir.name}', '${albumLabel}')" title="Write NFC Tag">${ICONS.tag}</div>`
+                            : ''}
                     `}
                     ${dir.cover ? `<img src="${dir.cover}">` : `<div class="placeholder-img"><span>No Cover</span></div>`}
                     <span class="name">${dir.name}</span>
@@ -1949,6 +2099,9 @@ function render() {
                 <button class="secondary outline" style="padding: 4px 8px;" onclick="handleSetTitle()" title="Set album title">${ICONS.edit} ${state.files.some(f => f.name.toLowerCase() === 'title.txt') ? 'Edit Title' : 'Set Title'}</button>
                 ${supportsQrAlbumCards()
                     ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button>`
+                    : ''}
+                ${supportsNfcTagWrite()
+                    ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleWriteTag('${state.currentPath}', '${escapeJsString(state.currentPath)}')" title="Write NFC tag">${ICONS.tag} Write Tag</button>`
                     : ''}
             </li>
         `;
