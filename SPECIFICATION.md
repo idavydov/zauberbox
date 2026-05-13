@@ -262,6 +262,10 @@ Each main state should have a unique LED pattern.
 - Once connected to Wi-Fi, the device should serve the normal application UI on
   `/`.
 - The normal application UI should be password protected.
+- Camera-input builds can generate printable album cards containing the cover
+  image and QR code.
+- RC522-input builds can generate printable cover-only album tiles without QR
+  codes; cover tile sheets contain six images.
 - The provisioning UI and the normal application UI should not be conflated in
   one long-lived mode.
 - If Wi-Fi is enabled and a network is configured, playback and QR scanning may

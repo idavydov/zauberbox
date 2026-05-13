@@ -7,6 +7,9 @@ const MM_TO_INCH = 25.4;
 const TILE_WIDTH_MM = 100;
 const TILE_HEIGHT_MM = 50;
 const SHEET_ROWS = 3;
+const COVER_TILE_SIZE_MM = 50;
+const COVER_SHEET_COLS = 2;
+const COVER_SHEET_ROWS = 3;
 const SUPPORTED_AUDIO_EXTENSIONS = ['.aac', '.flac', '.m4a', '.mp3', '.ogg', '.wav'];
 let state = {
     view: 'dashboard',
@@ -122,6 +125,10 @@ function supportsQrAlbumCards() {
 function supportsNfcTagWrite() {
     const capabilities = state.deviceStatus?.input?.capabilities;
     return capabilities?.nfc_tag_write === true;
+}
+
+function supportsAlbumTiles() {
+    return supportsQrAlbumCards() || supportsNfcTagWrite();
 }
 
 function playbackStatus() {
@@ -1535,11 +1542,20 @@ async function generateSingleCard(ctx, dirName, coverUrl, mp3s, xOffset, yOffset
     ctx.drawImage(qrCanvas, qrX, qrY);
 }
 
+async function generateCoverTile(ctx, dirName, coverUrl, mp3s, xOffset, yOffset, size) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(xOffset, yOffset, size, size);
+
+    const img = await loadCoverImage(dirName, coverUrl);
+    drawSquareCover(ctx, img, xOffset, yOffset, size);
+    drawCoverText(ctx, mp3s, xOffset, yOffset, size);
+}
+
 async function handleGenerateCard() {
-    if (!supportsQrAlbumCards()) {
+    if (!supportsAlbumTiles()) {
         await showModal({
             title: 'Unavailable',
-            message: `QR card generation is unavailable for the ${inputBackendName()} input backend.`,
+            message: `Tile generation is unavailable for the ${inputBackendName()} input backend.`,
             confirmText: 'OK',
             showCancel: false
         });
@@ -1558,8 +1574,9 @@ async function handleGenerateCard() {
     state.loading = true; render();
 
     try {
-        const WIDTH_PX = mmToPx(TILE_WIDTH_MM);
-        const HEIGHT_PX = mmToPx(TILE_HEIGHT_MM);
+        const qrMode = supportsQrAlbumCards();
+        const WIDTH_PX = qrMode ? mmToPx(TILE_WIDTH_MM) : mmToPx(COVER_TILE_SIZE_MM);
+        const HEIGHT_PX = qrMode ? mmToPx(TILE_HEIGHT_MM) : mmToPx(COVER_TILE_SIZE_MM);
 
         const canvas = document.createElement('canvas');
         canvas.width = WIDTH_PX;
@@ -1568,7 +1585,11 @@ async function handleGenerateCard() {
 
         const mp3s = await resolveTileTextEntries(state.currentPath, state.files);
 
-        await generateSingleCard(ctx, state.currentPath, coverUrl, mp3s, 0, 0, WIDTH_PX, HEIGHT_PX);
+        if (qrMode) {
+            await generateSingleCard(ctx, state.currentPath, coverUrl, mp3s, 0, 0, WIDTH_PX, HEIGHT_PX);
+        } else {
+            await generateCoverTile(ctx, state.currentPath, coverUrl, mp3s, 0, 0, WIDTH_PX);
+        }
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         const link = document.createElement('a');
@@ -1605,11 +1626,40 @@ function drawSheetGuides(ctx, width, height, rowHeight, rowCount) {
     ctx.restore();
 }
 
+function drawGridGuides(ctx, width, height, colWidth, rowHeight, colCount, rowCount) {
+    const guideWidthPx = Math.max(1, mmToPx(0.2));
+    const inset = guideWidthPx / 2;
+    const maxX = Math.max(inset, width - inset);
+    const maxY = Math.max(inset, height - inset);
+
+    ctx.save();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = guideWidthPx;
+
+    for (let col = 1; col < colCount; col++) {
+        const x = Math.min(maxX, Math.max(inset, col * colWidth));
+        ctx.beginPath();
+        ctx.moveTo(x, inset);
+        ctx.lineTo(x, maxY);
+        ctx.stroke();
+    }
+    for (let row = 1; row < rowCount; row++) {
+        const y = Math.min(maxY, Math.max(inset, row * rowHeight));
+        ctx.beginPath();
+        ctx.moveTo(inset, y);
+        ctx.lineTo(maxX, y);
+        ctx.stroke();
+    }
+
+    ctx.strokeRect(inset, inset, Math.max(0, width - guideWidthPx), Math.max(0, height - guideWidthPx));
+    ctx.restore();
+}
+
 async function handleDownloadSheets() {
-    if (!supportsQrAlbumCards()) {
+    if (!supportsAlbumTiles()) {
         await showModal({
             title: 'Unavailable',
-            message: `QR sheet generation is unavailable for the ${inputBackendName()} input backend.`,
+            message: `Tile sheet generation is unavailable for the ${inputBackendName()} input backend.`,
             confirmText: 'OK',
             showCancel: false
         });
@@ -1619,14 +1669,18 @@ async function handleDownloadSheets() {
     if (state.selectedDirs.size === 0) return;
     state.loading = true; render();
     try {
-        const TILE_W_PX = mmToPx(TILE_WIDTH_MM);
-        const TILE_H_PX = mmToPx(TILE_HEIGHT_MM);
-        const WIDTH_PX = TILE_W_PX;
-        const HEIGHT_PX = TILE_H_PX * SHEET_ROWS;
+        const qrMode = supportsQrAlbumCards();
+        const tileW = qrMode ? mmToPx(TILE_WIDTH_MM) : mmToPx(COVER_TILE_SIZE_MM);
+        const tileH = qrMode ? mmToPx(TILE_HEIGHT_MM) : mmToPx(COVER_TILE_SIZE_MM);
+        const cols = qrMode ? 1 : COVER_SHEET_COLS;
+        const rows = qrMode ? SHEET_ROWS : COVER_SHEET_ROWS;
+        const tilesPerSheet = cols * rows;
+        const WIDTH_PX = tileW * cols;
+        const HEIGHT_PX = tileH * rows;
 
         const selectedNames = Array.from(state.selectedDirs);
-        for (let i = 0; i < selectedNames.length; i += SHEET_ROWS) {
-            const chunk = selectedNames.slice(i, i + SHEET_ROWS);
+        for (let i = 0; i < selectedNames.length; i += tilesPerSheet) {
+            const chunk = selectedNames.slice(i, i + tilesPerSheet);
             const canvas = document.createElement('canvas');
             canvas.width = WIDTH_PX; canvas.height = HEIGHT_PX;
             const ctx = canvas.getContext('2d');
@@ -1634,6 +1688,8 @@ async function handleDownloadSheets() {
 
             for (let j = 0; j < chunk.length; j++) {
                 const name = chunk[j];
+                const col = j % cols;
+                const row = Math.floor(j / cols);
                 const files = await fetchAPI(`/files?path=${encodeURIComponent(name)}`);
                 const coverUrl = `${API_BASE}/file?path=${encodeURIComponent(name)}&name=${encodeURIComponent('cover.jpg')}`;
                 const hasCover = files.some(f => f.name.toLowerCase() === 'cover.jpg');
@@ -1641,13 +1697,21 @@ async function handleDownloadSheets() {
                 if (!hasCover) {
                     throw new Error(`Missing cover image for ${name}`);
                 }
-                await generateSingleCard(ctx, name, coverUrl, mp3s, 0, j * TILE_H_PX, TILE_W_PX, TILE_H_PX);
+                if (qrMode) {
+                    await generateSingleCard(ctx, name, coverUrl, mp3s, 0, row * tileH, tileW, tileH);
+                } else {
+                    await generateCoverTile(ctx, name, coverUrl, mp3s, col * tileW, row * tileH, tileW);
+                }
             }
 
-            drawSheetGuides(ctx, WIDTH_PX, HEIGHT_PX, TILE_H_PX, SHEET_ROWS);
+            if (qrMode) {
+                drawSheetGuides(ctx, WIDTH_PX, HEIGHT_PX, tileH, rows);
+            } else {
+                drawGridGuides(ctx, WIDTH_PX, HEIGHT_PX, tileW, tileH, cols, rows);
+            }
 
             const link = document.createElement('a');
-            link.download = `sheet_${Math.floor(i / SHEET_ROWS) + 1}.jpg`;
+            link.download = `${qrMode ? 'sheet' : 'cover_sheet'}_${Math.floor(i / tilesPerSheet) + 1}.jpg`;
             link.href = canvas.toDataURL('image/jpeg', 0.95);
             link.click();
             await new Promise(r => setTimeout(r, 500));
@@ -1755,6 +1819,7 @@ function render() {
         const battery = state.deviceStatus?.battery;
         const qrAlbumCardsSupported = supportsQrAlbumCards();
         const nfcTagWriteSupported = supportsNfcTagWrite();
+        const albumTilesSupported = supportsAlbumTiles();
         const batterySummary = batterySummaryText();
         const batteryState = batteryStateClass();
 		const batteryDetail = state.deviceStatusError ? `title="${escapeHtml(state.deviceStatusError)}"` : '';
@@ -1782,7 +1847,7 @@ function render() {
         html += `
             <div class="header-row">
                 <h2>Directories</h2>
-                ${qrAlbumCardsSupported
+                ${albumTilesSupported
                     ? `<button class="${state.selectionMode ? 'primary' : 'contrast outline'} select-btn" onclick="toggleSelectionMode()">${state.selectionMode ? 'Cancel' : 'Select Folders'}</button>`
                     : ''}
             </div>
@@ -1817,11 +1882,11 @@ function render() {
         }
         html += `</div></div>`;
 
-        if (qrAlbumCardsSupported && state.selectionMode && state.selectedDirs.size > 0) {
+        if (albumTilesSupported && state.selectionMode && state.selectedDirs.size > 0) {
             html += `
                 <div class="selection-bar">
                     <span>${state.selectedDirs.size} selected</span>
-                    <button class="primary" onclick="handleDownloadSheets()">${ICONS.download} Download Sheets</button>
+                    <button class="primary" onclick="handleDownloadSheets()">${ICONS.download} ${qrAlbumCardsSupported ? 'Download Sheets' : 'Download Cover Sheets'}</button>
                 </div>
             `;
         }
@@ -2097,8 +2162,8 @@ function render() {
             <li class="nav-btn-group">
                 <button class="secondary outline" style="padding: 4px 8px;" onclick="handlePlayAlbum('${state.currentPath}')" title="${isCurrentAlbumPlaying ? 'Restart album playback' : 'Start album playback'}">${ICONS.play} ${isCurrentAlbumPlaying ? 'Restart Album' : 'Play Album'}</button>
                 <button class="secondary outline" style="padding: 4px 8px;" onclick="handleSetTitle()" title="Set album title">${ICONS.edit} ${state.files.some(f => f.name.toLowerCase() === 'title.txt') ? 'Edit Title' : 'Set Title'}</button>
-                ${supportsQrAlbumCards()
-                    ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="Generate QR card">${ICONS.image} Generate QR card</button>`
+                ${supportsAlbumTiles()
+                    ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="${supportsQrAlbumCards() ? 'Generate QR card' : 'Generate cover tile'}">${ICONS.image} ${supportsQrAlbumCards() ? 'Generate QR card' : 'Generate Cover'}</button>`
                     : ''}
                 ${supportsNfcTagWrite()
                     ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleWriteTag('${state.currentPath}', '${escapeJsString(state.currentPath)}')" title="Write NFC tag">${ICONS.tag} Write Tag</button>`
