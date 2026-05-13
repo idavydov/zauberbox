@@ -478,6 +478,11 @@ header nav {
     color: var(--pico-muted-color);
 }
 
+.debug-status.success {
+    color: #16883a;
+    font-weight: 700;
+}
+
 /* Debug View */
 .debug-grid {
     margin-top: 1rem;

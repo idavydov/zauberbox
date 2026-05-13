@@ -45,6 +45,7 @@ let deviceStatusAbortController = null;
 let tickerTimerId = 0;
 let debugReturnHash = '#/';
 let tagWritePollTimerId = 0;
+let tagWriteAutoCloseTimerId = 0;
 let activeTagWriteAlbumId = '';
 let activeTagWriteAlbumLabel = '';
 
@@ -296,21 +297,27 @@ function tagWriteStatusText(status) {
 function renderTagWriteModalStatus(status) {
     const messageEl = document.getElementById('tag-write-message');
     const statusEl = document.getElementById('tag-write-status');
-    const progressEl = document.getElementById('tag-write-progress');
+    const busyEl = document.getElementById('tag-write-busy');
     const cancelBtn = document.getElementById('tag-write-cancel');
     const doneBtn = document.getElementById('tag-write-done');
-    if (!messageEl || !statusEl || !progressEl || !cancelBtn || !doneBtn) return;
+    if (!messageEl || !statusEl || !busyEl || !cancelBtn || !doneBtn) return;
 
     const stateName = status?.state || 'unsupported';
     const busy = stateName === 'waiting_for_tag' || stateName === 'writing';
-    messageEl.textContent = status?.message || (busy ? 'Place a tag on the reader.' : '');
-    statusEl.textContent = tagWriteStatusText(status);
-    statusEl.className = `debug-status${stateName === 'failed' ? ' error' : ''}`;
-    progressEl.style.display = busy ? 'block' : 'none';
-    progressEl.toggleAttribute('aria-busy', busy);
+    messageEl.textContent = busy ? '' : (status?.message || '');
+    statusEl.textContent = stateName === 'succeeded' ? '✅ Done' : tagWriteStatusText(status);
+    statusEl.className = `debug-status${stateName === 'failed' ? ' error' : ''}${stateName === 'succeeded' ? ' success' : ''}`;
+    busyEl.style.display = busy ? 'inline-block' : 'none';
+    busyEl.textContent = stateName === 'writing'
+        ? 'Writing...'
+        : (status?.message || 'Place a tag on the reader.');
     cancelBtn.style.display = busy ? 'inline-block' : 'none';
     doneBtn.style.display = busy ? 'none' : 'inline-block';
     doneBtn.textContent = stateName === 'succeeded' ? 'Done' : 'Close';
+
+    if (stateName === 'succeeded') {
+        scheduleTagWriteAutoClose();
+    }
 }
 
 function scheduleTagWritePoll() {
@@ -318,6 +325,21 @@ function scheduleTagWritePoll() {
         window.clearTimeout(tagWritePollTimerId);
     }
     tagWritePollTimerId = window.setTimeout(pollTagWriteStatus, 600);
+}
+
+function clearTagWriteAutoClose() {
+    if (tagWriteAutoCloseTimerId) {
+        window.clearTimeout(tagWriteAutoCloseTimerId);
+        tagWriteAutoCloseTimerId = 0;
+    }
+}
+
+function scheduleTagWriteAutoClose() {
+    if (tagWriteAutoCloseTimerId) return;
+    tagWriteAutoCloseTimerId = window.setTimeout(() => {
+        tagWriteAutoCloseTimerId = 0;
+        closeTagWriteModal(false);
+    }, 1800);
 }
 
 async function pollTagWriteStatus() {
@@ -346,6 +368,7 @@ async function closeTagWriteModal(cancelActive = true) {
         window.clearTimeout(tagWritePollTimerId);
         tagWritePollTimerId = 0;
     }
+    clearTagWriteAutoClose();
 
     const modal = document.getElementById('tag-write-modal');
     if (cancelActive) {
@@ -369,6 +392,7 @@ async function handleWriteTag(albumId, albumLabel = '') {
         return;
     }
 
+    clearTagWriteAutoClose();
     activeTagWriteAlbumId = albumId;
     activeTagWriteAlbumLabel = albumLabel || albumId;
     const modal = document.getElementById('tag-write-modal');
