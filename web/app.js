@@ -561,6 +561,10 @@ function escapeJsString(value) {
         .replaceAll('\r', '\\r');
 }
 
+function escapeJsAttrString(value) {
+    return escapeHtml(escapeJsString(value));
+}
+
 function updateUploadState(patch) {
     if (!state.upload) {
         return;
@@ -1878,20 +1882,23 @@ function render() {
             <div class="dir-grid">
         `;
         state.directories.forEach(dir => {
+            const dirName = String(dir.name || '');
             const isSelected = state.selectedDirs.has(dir.name);
             const secondaryText = dir.title || dir.first_mp3 || 'Empty';
-            const albumLabel = escapeJsString(dir.title || dir.name);
+            const dirNameJs = escapeJsAttrString(dirName);
+            const albumLabelJs = escapeJsAttrString(dir.title || dirName);
+            const coverUrl = dir.cover ? escapeHtml(dir.cover) : '';
             html += `
-                <div class="dir-card ${isSelected ? 'selected' : ''}" onclick="${state.selectionMode ? `toggleDirSelection('${dir.name}')` : `enterDirectory('${dir.name}')`}">
+                <div class="dir-card ${isSelected ? 'selected' : ''}" onclick="${state.selectionMode ? `toggleDirSelection('${dirNameJs}')` : `enterDirectory('${dirNameJs}')`}">
                     ${state.selectionMode ? `<div class="select-overlay">${ICONS.check}</div>` : `
-                        <div class="delete-btn" onclick="handleRmdir(event, '${dir.name}')" title="Delete Directory">${ICONS.trash}</div>
-                        <div class="card-play-btn" onclick="event.stopPropagation(); handlePlayAlbum('${dir.name}')" title="Play Album">${ICONS.play}</div>
+                        <div class="delete-btn" onclick="handleRmdir(event, '${dirNameJs}')" title="Delete Directory">${ICONS.trash}</div>
+                        <div class="card-play-btn" onclick="event.stopPropagation(); handlePlayAlbum('${dirNameJs}')" title="Play Album">${ICONS.play}</div>
                         ${nfcTagWriteSupported
-                            ? `<div class="card-tag-btn" onclick="event.stopPropagation(); handleWriteTag('${dir.name}', '${albumLabel}')" title="Write NFC Tag">${ICONS.tag}</div>`
+                            ? `<div class="card-tag-btn" onclick="event.stopPropagation(); handleWriteTag('${dirNameJs}', '${albumLabelJs}')" title="Write NFC Tag">${ICONS.tag}</div>`
                             : ''}
                     `}
-                    ${dir.cover ? `<img src="${dir.cover}">` : `<div class="placeholder-img"><span>No Cover</span></div>`}
-                    <span class="name">${dir.name}</span>
+                    ${coverUrl ? `<img src="${coverUrl}">` : `<div class="placeholder-img"><span>No Cover</span></div>`}
+                    <span class="name">${escapeHtml(dirName)}</span>
                     <span class="first-mp3">${escapeHtml(secondaryText)}</span>
                 </div>
             `;
@@ -2168,6 +2175,8 @@ function render() {
         const uploadPercent = uploadState
             ? Math.round((uploadedBytes / totalBytes) * 100)
             : 0;
+        const currentPathText = escapeHtml(state.currentPath || '');
+        const currentPathJs = escapeJsAttrString(state.currentPath || '');
 
         const batterySummary = batterySummaryText();
         const batteryState = batteryStateClass();
@@ -2176,7 +2185,7 @@ function render() {
 
         navLeft.innerHTML = `
             <li><button class="contrast outline" style="padding: 4px 8px; border:none;" onclick="loadDashboard()">${ICONS.back}</button></li>
-            <li><strong>${state.currentPath}</strong></li>
+            <li><strong>${currentPathText}</strong></li>
         `;
         navRight.innerHTML = `
             <li class="nav-battery ${batteryState}" ${batteryDetail}>
@@ -2184,13 +2193,13 @@ function render() {
                 <span class="nav-battery-text">${escapeHtml(batterySummary)}</span>
             </li>
             <li class="nav-btn-group">
-                <button class="secondary outline" style="padding: 4px 8px;" onclick="handlePlayAlbum('${state.currentPath}')" title="${isCurrentAlbumPlaying ? 'Restart album playback' : 'Start album playback'}">${ICONS.play} ${isCurrentAlbumPlaying ? 'Restart Album' : 'Play Album'}</button>
+                <button class="secondary outline" style="padding: 4px 8px;" onclick="handlePlayAlbum('${currentPathJs}')" title="${isCurrentAlbumPlaying ? 'Restart album playback' : 'Start album playback'}">${ICONS.play} ${isCurrentAlbumPlaying ? 'Restart Album' : 'Play Album'}</button>
                 <button class="secondary outline" style="padding: 4px 8px;" onclick="handleSetTitle()" title="Set album title">${ICONS.edit} ${state.files.some(f => f.name.toLowerCase() === 'title.txt') ? 'Edit Title' : 'Set Title'}</button>
                 ${supportsAlbumTiles()
                     ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleGenerateCard()" title="${supportsQrAlbumCards() ? 'Generate QR card' : 'Generate cover tile'}">${ICONS.image} ${supportsQrAlbumCards() ? 'Generate QR card' : 'Generate Cover'}</button>`
                     : ''}
                 ${supportsNfcTagWrite()
-                    ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleWriteTag('${state.currentPath}', '${escapeJsString(state.currentPath)}')" title="Write NFC tag">${ICONS.tag} Write Tag</button>`
+                    ? `<button class="secondary outline" style="padding: 4px 8px;" onclick="handleWriteTag('${currentPathJs}', '${currentPathJs}')" title="Write NFC tag">${ICONS.tag} Write Tag</button>`
                     : ''}
             </li>
         `;
@@ -2208,7 +2217,7 @@ function render() {
                             <strong>Uploading ${Math.min(uploadState.totalFiles, uploadState.completedFiles + 1)} / ${uploadState.totalFiles}</strong>
                             <span>${uploadPercent}%</span>
                         </header>
-                        <div class="upload-progress-meta">${uploadState.currentFileName}</div>
+                        <div class="upload-progress-meta">${escapeHtml(uploadState.currentFileName)}</div>
                         <progress value="${uploadedBytes}" max="${totalBytes}"></progress>
                         <small>${formatBytes(uploadedBytes)} / ${formatBytes(uploadState.totalBytes)}</small>
                     </article>
@@ -2220,18 +2229,20 @@ function render() {
         const others = state.files.filter(f => !SUPPORTED_AUDIO_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext)));
 
         const renderFileItem = (file, icon) => {
-            const fileUrl = `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent(file.name)}`;
+            const fileName = String(file.name || '');
+            const fileNameJs = escapeJsAttrString(fileName);
+            const fileUrl = `${API_BASE}/file?path=${encodeURIComponent(state.currentPath)}&name=${encodeURIComponent(fileName)}`;
             return `
                 <div class="file-item">
                     <span class="file-icon">${icon}</span>
-                    <span class="file-name">${file.name}</span>
-                    <a href="${fileUrl}" target="_blank" class="action-icon" title="Download">
+                    <span class="file-name">${escapeHtml(fileName)}</span>
+                    <a href="${escapeHtml(fileUrl)}" target="_blank" class="action-icon" title="Download">
                         ${ICONS.download}
                     </a>
-                    <span class="action-icon" onclick="handleRename('${file.name}')" title="Rename">
+                    <span class="action-icon" onclick="handleRename('${fileNameJs}')" title="Rename">
                         ${ICONS.edit}
                     </span>
-                    <span class="action-icon delete" onclick="handleDelete('${file.name}')" title="Delete">
+                    <span class="action-icon delete" onclick="handleDelete('${fileNameJs}')" title="Delete">
                         ${ICONS.trash}
                     </span>
                 </div>
@@ -2272,7 +2283,7 @@ function render() {
                 </div>
                 <div class="cover-preview-card">
                     <div style="position:relative; margin:0 auto; max-width:100%;">
-                        ${coverUrl ? `<img src="${coverUrl}">` : `<div class="placeholder-img" style="aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; background:var(--pico-secondary-focus); color:var(--pico-secondary); border-radius:8px;">No Cover</div>`}
+                        ${coverUrl ? `<img src="${escapeHtml(coverUrl)}">` : `<div class="placeholder-img" style="aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; background:var(--pico-secondary-focus); color:var(--pico-secondary); border-radius:8px;">No Cover</div>`}
                         <label class="cover-edit-overlay${uploadInProgress ? ' disabled' : ''}" title="${uploadInProgress ? 'Upload in progress' : 'Change Cover'}">
                             <input type="file" accept="image/*" style="display:none" ${uploadInProgress ? 'disabled' : ''} onchange="handleUpload(this.files, 'cover')">
                             ${ICONS.edit}
