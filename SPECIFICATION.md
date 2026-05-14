@@ -160,6 +160,9 @@ The firmware behavior should be modeled as explicit states.
 - Wake-up behavior must be explicit in the implementation.
 - The current implementation uses deep sleep and wakes on the dedicated `BOOT`
   button.
+- In RC522-input builds, entering deep sleep should put the reader into low
+  power without hardware modifications by disabling the antenna, soft-powering
+  down the reader, holding `RST` low, and parking the SPI pins.
 - Waking from sleep returns to `QR Scan`.
 
 ## Buttons

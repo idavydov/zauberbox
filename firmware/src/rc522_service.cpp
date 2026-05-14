@@ -1,6 +1,7 @@
 #include "rc522_service.h"
 
 #if defined(ZAUBERBOX_INPUT_RC522)
+#include <driver/gpio.h>
 #include <MFRC522.h>
 #include <SPI.h>
 
@@ -36,6 +37,44 @@ constexpr uint8_t kNdefUriType = 'U';
 constexpr uint8_t kNdefFileUriPrefix = 0x1D;
 
 MFRC522 gRc522(kRc522CsPin, MFRC522::UNUSED_PIN);
+
+gpio_num_t rc522Gpio(uint8_t pin) {
+    return static_cast<gpio_num_t>(pin);
+}
+
+void disableRc522SleepHolds() {
+    gpio_deep_sleep_hold_dis();
+    gpio_hold_dis(rc522Gpio(kRc522ResetPin));
+    gpio_hold_dis(rc522Gpio(kRc522CsPin));
+    gpio_hold_dis(rc522Gpio(kRc522SckPin));
+    gpio_hold_dis(rc522Gpio(kRc522MosiPin));
+    gpio_hold_dis(rc522Gpio(kRc522MisoPin));
+}
+
+void holdRc522PinForSleep(uint8_t pin) {
+    gpio_hold_en(rc522Gpio(pin));
+}
+
+void parkRc522PinsForSleep() {
+    SPI.end();
+
+    pinMode(kRc522ResetPin, OUTPUT);
+    digitalWrite(kRc522ResetPin, LOW);
+    pinMode(kRc522CsPin, OUTPUT);
+    digitalWrite(kRc522CsPin, HIGH);
+    pinMode(kRc522SckPin, OUTPUT);
+    digitalWrite(kRc522SckPin, LOW);
+    pinMode(kRc522MosiPin, OUTPUT);
+    digitalWrite(kRc522MosiPin, LOW);
+    pinMode(kRc522MisoPin, INPUT_PULLDOWN);
+
+    holdRc522PinForSleep(kRc522ResetPin);
+    holdRc522PinForSleep(kRc522CsPin);
+    holdRc522PinForSleep(kRc522SckPin);
+    holdRc522PinForSleep(kRc522MosiPin);
+    holdRc522PinForSleep(kRc522MisoPin);
+    gpio_deep_sleep_hold_en();
+}
 
 String formatUid(const MFRC522::Uid &uid) {
     String value;
@@ -340,6 +379,7 @@ bool Rc522Service::begin(AlbumSelectedCallback onAlbumSelected) {
 
 #if defined(ZAUBERBOX_INPUT_RC522)
     tagWriteStatus_.state = TagWriteState::Idle;
+    disableRc522SleepHolds();
     pinMode(kRc522CsPin, OUTPUT);
     digitalWrite(kRc522CsPin, HIGH);
     pinMode(kRc522ResetPin, OUTPUT);
@@ -565,9 +605,12 @@ void Rc522Service::prepareForSleep() {
 #if defined(ZAUBERBOX_INPUT_RC522)
     cancelNfcTagWrite();
     if (initialized_) {
+        gRc522.PCD_StopCrypto1();
         gRc522.PCD_AntennaOff();
+        gRc522.PCD_SoftPowerDown();
     }
-    digitalWrite(kRc522ResetPin, LOW);
+    parkRc522PinsForSleep();
+    Serial.println("RC522 service: parked for deep sleep (RST low, SPI pins held).");
 #endif
 }
 
