@@ -79,6 +79,8 @@ class WebServerService {
     bool running_ = false;
     File uploadFile_;
     String uploadTargetPath_;
+    String uploadTempPath_;
+    String uploadBackupPath_;
     bool uploadFailed_ = false;
     String uploadError_;
     bool uploadTargetHasClientTimestamp_ = false;

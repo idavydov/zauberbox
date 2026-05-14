@@ -931,7 +931,15 @@ void WebServerService::handleUploadData() {
         if (uploadFile_) {
             uploadFile_.close();
         }
+        if (!uploadTempPath_.isEmpty()) {
+            SD_MMC.remove(uploadTempPath_.c_str());
+        }
+        if (!uploadBackupPath_.isEmpty()) {
+            SD_MMC.remove(uploadBackupPath_.c_str());
+        }
         uploadTargetPath_ = "";
+        uploadTempPath_ = "";
+        uploadBackupPath_ = "";
         uploadTargetHasClientTimestamp_ = false;
         uploadTargetLastWrite_ = 0;
 
@@ -956,10 +964,14 @@ void WebServerService::handleUploadData() {
         const String targetDir = joinStoragePath(directory);
         SD_MMC.mkdir(targetDir.c_str());
         uploadTargetPath_ = joinStoragePath(directory, filename);
+        const String uploadSuffix = String(".zb-upload-") + String(millis(), HEX);
+        uploadTempPath_ = uploadTargetPath_ + uploadSuffix;
+        uploadBackupPath_ = uploadTargetPath_ + uploadSuffix + ".bak";
         uploadTargetHasClientTimestamp_ =
             parseClientLastModifiedMs(server_.arg("last_modified_ms"), &uploadTargetLastWrite_);
-        SD_MMC.remove(uploadTargetPath_.c_str());
-        uploadFile_ = SD_MMC.open(uploadTargetPath_.c_str(), FILE_WRITE);
+        SD_MMC.remove(uploadTempPath_.c_str());
+        SD_MMC.remove(uploadBackupPath_.c_str());
+        uploadFile_ = SD_MMC.open(uploadTempPath_.c_str(), FILE_WRITE);
         if (!uploadFile_) {
             uploadFailed_ = true;
             uploadError_ = "Failed to open destination";
@@ -979,9 +991,36 @@ void WebServerService::handleUploadData() {
             uploadFile_.close();
         }
         if (!uploadFailed_ && uploadTargetHasClientTimestamp_ &&
-            !applyFileTimestamp(uploadTargetPath_, uploadTargetLastWrite_)) {
+            !applyFileTimestamp(uploadTempPath_, uploadTargetLastWrite_)) {
             Serial.printf("Web server: failed to set mtime for %s\n",
-                          uploadTargetPath_.c_str());
+                          uploadTempPath_.c_str());
+        }
+        bool targetBackedUp = false;
+        if (!uploadFailed_ && SD_MMC.exists(uploadTargetPath_.c_str())) {
+            if (SD_MMC.rename(uploadTargetPath_.c_str(), uploadBackupPath_.c_str())) {
+                targetBackedUp = true;
+            } else {
+                uploadFailed_ = true;
+                uploadError_ = "Failed to replace existing file";
+            }
+        }
+        if (!uploadFailed_ && !SD_MMC.rename(uploadTempPath_.c_str(), uploadTargetPath_.c_str())) {
+            uploadFailed_ = true;
+            uploadError_ = "Failed to finalize upload";
+            if (targetBackedUp) {
+                if (SD_MMC.rename(uploadBackupPath_.c_str(), uploadTargetPath_.c_str())) {
+                    targetBackedUp = false;
+                } else {
+                    Serial.printf("Web server: failed to restore backup %s\n",
+                                  uploadBackupPath_.c_str());
+                }
+            }
+        }
+        if (!uploadFailed_ && targetBackedUp) {
+            SD_MMC.remove(uploadBackupPath_.c_str());
+        }
+        if (uploadFailed_ && !uploadTempPath_.isEmpty()) {
+            SD_MMC.remove(uploadTempPath_.c_str());
         }
         if (!uploadFailed_) {
             Serial.printf("Web server: uploaded %s (%u bytes)\n",
@@ -989,6 +1028,8 @@ void WebServerService::handleUploadData() {
                           static_cast<unsigned>(upload.totalSize));
         }
         uploadTargetPath_ = "";
+        uploadTempPath_ = "";
+        uploadBackupPath_ = "";
         uploadTargetHasClientTimestamp_ = false;
         uploadTargetLastWrite_ = 0;
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
@@ -997,10 +1038,12 @@ void WebServerService::handleUploadData() {
         if (uploadFile_) {
             uploadFile_.close();
         }
-        if (!uploadTargetPath_.isEmpty()) {
-            SD_MMC.remove(uploadTargetPath_.c_str());
+        if (!uploadTempPath_.isEmpty()) {
+            SD_MMC.remove(uploadTempPath_.c_str());
         }
         uploadTargetPath_ = "";
+        uploadTempPath_ = "";
+        uploadBackupPath_ = "";
         uploadTargetHasClientTimestamp_ = false;
         uploadTargetLastWrite_ = 0;
     }
