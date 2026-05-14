@@ -667,6 +667,10 @@ void WebServerService::handleListAlbums() {
 
     for (const String &albumName : albumNames) {
         JsonObject item = result.createNestedObject();
+        if (item.isNull()) {
+            sendJsonError(500, "Too many albums");
+            return;
+        }
         item["name"] = albumName;
 
         const String albumPath = joinStoragePath(albumName);
@@ -708,9 +712,18 @@ void WebServerService::handleListAlbums() {
         if (!firstAudio.isEmpty()) {
             item["first_mp3"] = firstAudio;
         }
+
+        if (doc.overflowed()) {
+            sendJsonError(500, "Too many albums");
+            return;
+        }
     }
 
     String body;
+    if (doc.overflowed()) {
+        sendJsonError(500, "Too many albums");
+        return;
+    }
     serializeJson(doc, body);
     server_.send(200, "application/json", body);
 }
@@ -752,11 +765,23 @@ void WebServerService::handleListFiles() {
 
     for (const String &name : names) {
         JsonObject item = result.createNestedObject();
+        if (item.isNull()) {
+            sendJsonError(500, "Too many files");
+            return;
+        }
         item["name"] = name;
         item["type"] = mimeTypeForPath(name);
+        if (doc.overflowed()) {
+            sendJsonError(500, "Too many files");
+            return;
+        }
     }
 
     String body;
+    if (doc.overflowed()) {
+        sendJsonError(500, "Too many files");
+        return;
+    }
     serializeJson(doc, body);
     server_.send(200, "application/json", body);
 }
