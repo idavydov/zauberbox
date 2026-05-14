@@ -23,6 +23,7 @@ constexpr uint8_t kRc522MosiPin = 9;
 
 constexpr uint32_t kRc522PollIntervalMs = 100;
 constexpr uint32_t kRc522SerialReadFailureLogIntervalMs = 1000;
+constexpr uint32_t kRc522SelectionIdleTimeoutMs = 60000;
 constexpr uint32_t kRc522TagWriteTimeoutMs = 30000;
 constexpr uint8_t kRc522MissingPollsBeforeRemoval = 3;
 constexpr uint32_t kRc522ResetPulseMs = 50;
@@ -416,10 +417,23 @@ void Rc522Service::update() {
 
 #if defined(ZAUBERBOX_INPUT_RC522)
     if (!initialized_ || !active_) {
+        selectionIdleTimeoutAtMs_ = 0;
         return;
     }
 
     const uint32_t now = millis();
+    if (!isAlbumSelectionState(state) || tagWritePending_) {
+        selectionIdleTimeoutAtMs_ = 0;
+    } else if (selectionIdleTimeoutAtMs_ == 0) {
+        selectionIdleTimeoutAtMs_ = now + kRc522SelectionIdleTimeoutMs;
+    } else if (static_cast<int32_t>(now - selectionIdleTimeoutAtMs_) >= 0) {
+        selectionIdleTimeoutAtMs_ = 0;
+        if (appStateStore().transitionTo(AppState::Idle)) {
+            Serial.println("RC522 service: selection timeout reached, entering Idle.");
+        }
+        return;
+    }
+
     if (nextPollAtMs_ != 0 && static_cast<int32_t>(now - nextPollAtMs_) < 0) {
         return;
     }
@@ -508,7 +522,7 @@ void Rc522Service::update() {
 }
 
 bool Rc522Service::isSelectionActive() const {
-    return active_;
+    return isAlbumSelectionState(appStateStore().current());
 }
 
 bool Rc522Service::isHardwareActive() const {
@@ -588,6 +602,7 @@ void Rc522Service::cancelNfcTagWrite() {
     tagWriteStatus_.albumId = "";
     tagWriteStatus_.message = "";
     tagWriteStatus_.tagUid = "";
+    selectionIdleTimeoutAtMs_ = 0;
     tagWriteTimeoutAtMs_ = 0;
 #endif
 }
@@ -604,6 +619,7 @@ void Rc522Service::prepareForSleep() {
     active_ = false;
 #if defined(ZAUBERBOX_INPUT_RC522)
     cancelNfcTagWrite();
+    selectionIdleTimeoutAtMs_ = 0;
     if (initialized_) {
         gRc522.PCD_StopCrypto1();
         gRc522.PCD_AntennaOff();

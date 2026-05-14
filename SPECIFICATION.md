@@ -38,6 +38,9 @@ the camera and start playback of the corresponding album directory.
   `file://XXX`.
 - Re-presenting the same tag while it remains on the reader should not restart
   playback repeatedly; remove and present the tag again to trigger another read.
+- If no tag is presented during RC522 album-selection mode for `60 seconds`,
+  the device enters `Idle`; RC522 polling remains available in `Idle` so a tag
+  can still start playback.
 - The RC522 input build can write NTAG cards from the web app. Writing a tag
   stores an NDEF URI record with the same `file://XXX` album URL format and
   verifies the tag by reading it back.

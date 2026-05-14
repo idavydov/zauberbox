@@ -46,6 +46,7 @@ class Rc522Service : public AlbumInputService {
     uint8_t missingPollCount_ = 0;
     uint32_t nextPollAtMs_ = 0;
     uint32_t lastSerialReadFailureLogAtMs_ = 0;
+    uint32_t selectionIdleTimeoutAtMs_ = 0;
     uint32_t tagWriteTimeoutAtMs_ = 0;
     String presentedUid_;
 };
