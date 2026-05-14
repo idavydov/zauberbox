@@ -322,6 +322,8 @@ Factory reset should not erase media files from the microSD card.
 - Playback battery-saver threshold: below `90%` estimated charge.
 - Idle sleep timeout: `10 seconds` when Wi-Fi is disabled.
 - Paused sleep timeout: `5 minutes`.
+- Timeout-based sleep does not require stable battery telemetry; critical
+  battery sleep does.
 - Critical-battery sleep uses a short startup settle window before forcing
   sleep again after boot or wake.
 

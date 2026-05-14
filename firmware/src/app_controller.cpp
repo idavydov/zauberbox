@@ -632,11 +632,8 @@ void AppController::handleBatteryPowerPolicy() {
     }
 
     const BatterySnapshot battery = batteryService().snapshot();
-    if (!canUseBatteryPolicy(battery)) {
-        return;
-    }
-
-    if (shouldEnterCriticalBatterySleep(battery, state)) {
+    const bool hasUsableBatteryReading = canUseBatteryPolicy(battery);
+    if (hasUsableBatteryReading && shouldEnterCriticalBatterySleep(battery, state)) {
         if (millis() - policyStartedAtMs_ < BatteryPolicy::kCriticalSleepSettleMs) {
             return;
         }
@@ -649,7 +646,8 @@ void AppController::handleBatteryPowerPolicy() {
             pausedEnteredAtMs_ = millis();
         }
         if (millis() - pausedEnteredAtMs_ >= BatteryPolicy::kPausedSleepTimeoutMs) {
-            requestSleep(SleepTrigger::PausedTimeout, &battery);
+            requestSleep(SleepTrigger::PausedTimeout,
+                         hasUsableBatteryReading ? &battery : nullptr);
         }
         return;
     }
@@ -668,7 +666,8 @@ void AppController::handleBatteryPowerPolicy() {
         return;
     }
 
-    requestSleep(SleepTrigger::IdleTimeout, &battery);
+    requestSleep(SleepTrigger::IdleTimeout,
+                 hasUsableBatteryReading ? &battery : nullptr);
 }
 
 void AppController::handleSleepState() {
