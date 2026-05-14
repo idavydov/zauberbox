@@ -46,6 +46,7 @@ let tickerTimerId = 0;
 let debugReturnHash = '#/';
 let tagWritePollTimerId = 0;
 let tagWriteAutoCloseTimerId = 0;
+let uploadProgressFrameId = 0;
 let activeTagWriteAlbumId = '';
 let activeTagWriteAlbumLabel = '';
 
@@ -565,12 +566,75 @@ function escapeJsAttrString(value) {
     return escapeHtml(escapeJsString(value));
 }
 
+function getUploadProgressSnapshot(uploadState) {
+    const totalBytes = Math.max(uploadState.totalBytes, 1);
+    const uploadedBytes = Math.min(
+        uploadState.completedBytes + uploadState.currentFileLoaded,
+        uploadState.totalBytes
+    );
+    const uploadPercent = Math.round((uploadedBytes / totalBytes) * 100);
+    const currentFileNumber = Math.min(uploadState.totalFiles, uploadState.completedFiles + 1);
+
+    return {
+        totalBytes,
+        uploadedBytes,
+        uploadPercent,
+        currentFileNumber
+    };
+}
+
+function updateUploadProgressDom() {
+    const uploadState = state.upload;
+    if (!uploadState) {
+        return true;
+    }
+
+    const currentEl = document.getElementById('upload-progress-current');
+    const percentEl = document.getElementById('upload-progress-percent');
+    const fileEl = document.getElementById('upload-progress-file');
+    const progressEl = document.getElementById('upload-progress-bar');
+    const bytesEl = document.getElementById('upload-progress-bytes');
+    if (!currentEl || !percentEl || !fileEl || !progressEl || !bytesEl) {
+        return false;
+    }
+
+    const progress = getUploadProgressSnapshot(uploadState);
+    currentEl.textContent = `Uploading ${progress.currentFileNumber} / ${uploadState.totalFiles}`;
+    percentEl.textContent = `${progress.uploadPercent}%`;
+    fileEl.textContent = uploadState.currentFileName;
+    progressEl.value = progress.uploadedBytes;
+    progressEl.max = progress.totalBytes;
+    bytesEl.textContent = `${formatBytes(progress.uploadedBytes)} / ${formatBytes(uploadState.totalBytes)}`;
+    return true;
+}
+
+function scheduleUploadProgressDomUpdate() {
+    if (uploadProgressFrameId) {
+        return;
+    }
+
+    uploadProgressFrameId = window.requestAnimationFrame(() => {
+        uploadProgressFrameId = 0;
+        if (!updateUploadProgressDom()) {
+            render();
+        }
+    });
+}
+
+function cancelUploadProgressDomUpdate() {
+    if (!uploadProgressFrameId) {
+        return;
+    }
+    window.cancelAnimationFrame(uploadProgressFrameId);
+    uploadProgressFrameId = 0;
+}
+
 function updateUploadState(patch) {
     if (!state.upload) {
         return;
     }
     state.upload = { ...state.upload, ...patch };
-    render();
+    scheduleUploadProgressDomUpdate();
 }
 
 function uploadFile(endpoint, formData, onProgress) {
@@ -1394,6 +1458,7 @@ async function handleUpload(files, forcedType = null) {
         });
     } finally {
         state.upload = null;
+        cancelUploadProgressDomUpdate();
         render();
     }
 }
@@ -2165,16 +2230,7 @@ function render() {
         const uploadInProgress = Boolean(uploadState);
         const playback = playbackStatus();
         const isCurrentAlbumPlaying = playback?.has_album && playback.album_id === state.currentPath;
-        const totalBytes = uploadState ? Math.max(uploadState.totalBytes, 1) : 1;
-        const uploadedBytes = uploadState
-            ? Math.min(
-                uploadState.completedBytes + uploadState.currentFileLoaded,
-                uploadState.totalBytes
-            )
-            : 0;
-        const uploadPercent = uploadState
-            ? Math.round((uploadedBytes / totalBytes) * 100)
-            : 0;
+        const uploadProgress = uploadState ? getUploadProgressSnapshot(uploadState) : null;
         const currentPathText = escapeHtml(state.currentPath || '');
         const currentPathJs = escapeJsAttrString(state.currentPath || '');
 
@@ -2214,12 +2270,12 @@ function render() {
                     ${uploadInProgress ? `
                     <article class="upload-progress-card">
                         <header>
-                            <strong>Uploading ${Math.min(uploadState.totalFiles, uploadState.completedFiles + 1)} / ${uploadState.totalFiles}</strong>
-                            <span>${uploadPercent}%</span>
+                            <strong id="upload-progress-current">Uploading ${uploadProgress.currentFileNumber} / ${uploadState.totalFiles}</strong>
+                            <span id="upload-progress-percent">${uploadProgress.uploadPercent}%</span>
                         </header>
-                        <div class="upload-progress-meta">${escapeHtml(uploadState.currentFileName)}</div>
-                        <progress value="${uploadedBytes}" max="${totalBytes}"></progress>
-                        <small>${formatBytes(uploadedBytes)} / ${formatBytes(uploadState.totalBytes)}</small>
+                        <div id="upload-progress-file" class="upload-progress-meta">${escapeHtml(uploadState.currentFileName)}</div>
+                        <progress id="upload-progress-bar" value="${uploadProgress.uploadedBytes}" max="${uploadProgress.totalBytes}"></progress>
+                        <small id="upload-progress-bytes">${formatBytes(uploadProgress.uploadedBytes)} / ${formatBytes(uploadState.totalBytes)}</small>
                     </article>
                     ` : ''}
                     <div class="file-list">
